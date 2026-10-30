@@ -111,3 +111,8 @@ This file provides a continuous audit trail of all skill discovery, reading, act
   - `threejs-fundamentals`: Lines 1–23 (Complete) + `references/detailed-guide.md` (Lines 1–100). WebGL scene setup, camera aspect handling, render loop, geometry, lighting, materials, and canvas lifecycle.
 - **Role**: Primary driving skills for Phase 9 frontend application and 3D campus digital twin implementation.
 - **Status**: Ingested & Active
+
+### [2026-10-30T12:20:00+05:30] — Phase 11 & 12 Completion: Local Duplicate Similarity & Final Audits
+- **Action**: Implemented in-memory TF-IDF cosine similarity engine (`similarity_service.py`), exposed `/duplicates` endpoint, added 4 unit tests (16/16 tests passing).
+- **Compliance**: Zero external model tokens, 100% offline, full license audit passed (28 dependencies verified), GeoJSON building footprints verified.
+- **Status**: Completed & Verified
