@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+**/node_modules/
 .pnp
 .pnp.js
 __pycache__/
@@ -12,6 +13,7 @@ env/
 
 # Next.js & build outputs
 .next/
+**/.next/
 out/
 build/
 dist/

@@ -51,29 +51,48 @@ cd "hackathon(SRM)"
 cp .env.example .env
 ```
 
-### 4.3 Backend Setup & Execution
+### 4.3 1-Click Launch (Recommended)
+- **Windows PowerShell:**
+  ```powershell
+  .\run_dev.ps1
+  ```
+- **Linux / macOS:**
+  ```bash
+  chmod +x ./run_dev.sh && ./run_dev.sh
+  ```
+- **Docker Compose:**
+  ```bash
+  docker compose up --build
+  ```
+
+### 4.4 Manual Setup (Step-by-Step)
 ```bash
-# Install backend dependencies
-python -m pip install -r backend/requirements.txt
+# 1. Install backend dependencies
+python -m pip install -r requirements.txt
 
-# Run database migrations and seed deterministic campus data
-python -m scripts.seed_generator
+# 2. Seed database
+python scripts/seed_generator.py
 
-# Start FastAPI backend server
-uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-API Documentation will be live at `http://127.0.0.1:8000/docs`.
+# 3. Start FastAPI server
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 
-### 4.4 Frontend Setup & Execution
-```bash
-# Install frontend dependencies
+# 4. In a second terminal, start Next.js frontend
 cd frontend
-npm install
-
-# Start Next.js development server
+npm install --legacy-peer-deps
 npm run dev
 ```
-Access the application at `http://localhost:3000`.
+
+### 4.5 Demo User Accounts & Roles
+Switch roles instantly using the top navigation role-switcher:
+
+| Role | Name | Email | Password | Key Permissions |
+| :--- | :--- | :--- | :--- | :--- |
+| **Facilities Admin** | Marcus Vance | `admin@campusops.internal` | `admin123` | Full dispatch, triage, relocation, all settings |
+| **Technician** | Sarah Jenkins | `tech.sarah@campusops.internal` | `tech123` | Accept work orders, state transitions, parts use |
+| **Dept Manager** | Dr. David Kim | `mgr.david@campusops.internal` | `mgr123` | Room booking, submit PRs, view building health |
+| **Procurement Approver** | Elena Rostova | `approver.elena@campusops.internal` | `approver123` | Approve purchase requests (Anti-self-approval) |
+| **Student** | Alex Rivera | `student.alex@campusops.internal` | `student123` | Report incidents, check campus notices |
+| **System Admin** | Root Admin | `sysadmin@campusops.internal` | `admin123` | System audit logs, security, database admin |
 
 ---
 
