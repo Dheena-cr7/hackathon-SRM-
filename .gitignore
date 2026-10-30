@@ -45,3 +45,6 @@ Thumbs.db
 
 # Large skill caches (preserve config, markdown, and manifests in .agent)
 .agents/
+
+.agent/skills/
+!.agent/skills/.antigravity-install-manifest.json
