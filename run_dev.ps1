@@ -15,3 +15,4 @@ npm run dev
 
 # Cleanup when user stops frontend
 Stop-Process -Id $backendProcess.Id
+

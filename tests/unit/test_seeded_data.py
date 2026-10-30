@@ -34,3 +34,4 @@ async def test_seeded_data_exists():
         item = (await session.execute(select(InventoryItem).where(InventoryItem.sku == "SKU-BRK-30A"))).scalar_one_or_none()
         assert item is not None
         assert item.quantity_on_hand == 15
+

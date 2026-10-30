@@ -45,3 +45,4 @@ async def update_incident_status(
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     return IncidentResponse.model_validate(incident)
+

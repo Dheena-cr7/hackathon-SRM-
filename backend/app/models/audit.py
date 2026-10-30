@@ -40,3 +40,4 @@ class Notification(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now, index=True, nullable=False)
 
     recipient = relationship("User", foreign_keys=[recipient_id])
+

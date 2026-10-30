@@ -46,3 +46,4 @@ class IncidentCorrelation(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     incident = relationship("Incident", foreign_keys=[incident_id], back_populates="correlations")
+

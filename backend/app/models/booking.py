@@ -32,3 +32,4 @@ class Booking(Base):
     room = relationship("Room", foreign_keys=[room_id], back_populates="bookings")
     relocated_from = relationship("Room", foreign_keys=[relocated_from_room_id])
     booked_by = relationship("User", back_populates="bookings")
+

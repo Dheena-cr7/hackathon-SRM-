@@ -39,3 +39,4 @@ async def test_inventory_negative_stock_prevention():
         items_resp_after = await ac.get("/api/v1/inventory/items", headers=headers)
         breaker_after = next(item for item in items_resp_after.json() if item["sku"] == "SKU-BRK-30A")
         assert breaker_after["available_stock"] == initial_available
+

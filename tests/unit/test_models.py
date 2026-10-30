@@ -18,3 +18,4 @@ async def test_database_table_creation():
     assert "inventory_items" in table_names
     assert "approvals" in table_names
     assert "audit_logs" in table_names
+

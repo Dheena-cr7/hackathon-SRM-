@@ -55,3 +55,4 @@ async def intake_simulated_email(
     )
     incident = await IncidentService.create_incident(db, current_user.id, data)
     return IncidentResponse.model_validate(incident)
+

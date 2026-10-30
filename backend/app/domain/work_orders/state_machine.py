@@ -25,3 +25,4 @@ def validate_transition(current_status: str, target_status: str) -> bool:
             f"Allowed next states: {sorted(list(allowed))}"
         )
     return True
+

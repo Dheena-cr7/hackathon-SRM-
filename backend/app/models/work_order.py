@@ -26,3 +26,4 @@ class WorkOrder(Base):
     incident = relationship("Incident", back_populates="work_order")
     assigned_technician = relationship("StaffProfile", back_populates="work_orders")
     parts_reservations = relationship("PartsReservation", back_populates="work_order", cascade="all, delete-orphan")
+

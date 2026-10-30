@@ -79,3 +79,4 @@ class AnalyticsService:
             incidents_by_category=by_category,
             building_status_list=bld_metrics
         )
+

@@ -18,3 +18,4 @@ async def get_overview_metrics(
     db: AsyncSession = Depends(get_db)
 ):
     return await AnalyticsService.get_campus_overview(db)
+

@@ -53,3 +53,4 @@ class Skill(Base):
     category = Column(String(50), nullable=False)  # electrical, hvac, plumbing, it_av, structural, general
 
     staff_members = relationship("StaffProfile", secondary=staff_skills, back_populates="skills")
+

@@ -46,3 +46,4 @@ class PurchaseRequestResponse(BaseModel):
 
     class Config:
         from_attributes = True
+

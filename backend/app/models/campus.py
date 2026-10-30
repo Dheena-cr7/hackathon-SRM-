@@ -55,3 +55,4 @@ class Asset(Base):
 
     room = relationship("Room", back_populates="assets")
     incidents = relationship("Incident", back_populates="asset")
+

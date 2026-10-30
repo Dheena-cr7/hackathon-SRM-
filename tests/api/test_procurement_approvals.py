@@ -39,3 +39,4 @@ async def test_anti_self_approval_procurement_rule():
         )
         assert resp_self_approval.status_code == 403
         assert "Self-approval is strictly prohibited" in resp_self_approval.json()["detail"]
+

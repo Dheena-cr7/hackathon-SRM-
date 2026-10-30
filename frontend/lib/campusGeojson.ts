@@ -198,3 +198,4 @@ export const CAMPUS_GEOJSON: CampusGeoJSON = {
     }
   ]
 };
+

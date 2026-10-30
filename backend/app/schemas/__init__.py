@@ -15,3 +15,4 @@ __all__ = [
     "InventoryItemResponse", "PartsReservationRequest", "PurchaseRequestCreate", "PurchaseRequestResponse", "ApprovalDecisionRequest",
     "CampusMetricsResponse", "BuildingMetric"
 ]
+

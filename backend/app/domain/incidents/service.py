@@ -104,3 +104,4 @@ class IncidentService:
             "building_id": incident.building_id
         })
         return incident
+

@@ -16,3 +16,4 @@ async def reset_database():
         await conn.run_sync(Base.metadata.create_all)
     await seed_database()
     yield
+

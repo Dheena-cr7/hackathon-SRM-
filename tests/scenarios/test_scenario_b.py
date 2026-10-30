@@ -95,3 +95,4 @@ async def test_end_to_end_scenario_b_technician_unavailability_and_reassignment(
         )
         assert trans_resp.status_code == 200
         assert trans_resp.json()["status"] == "in_progress"
+

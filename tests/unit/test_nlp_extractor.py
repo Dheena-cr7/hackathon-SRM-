@@ -42,3 +42,4 @@ def test_nlp_extraction_mech_lab():
     assert result.category == "plumbing"
     assert result.building_id == "BLD-ENG-02"
     assert result.room_id == "RM-MECH-102"
+

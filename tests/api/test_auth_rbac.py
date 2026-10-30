@@ -42,3 +42,4 @@ async def test_auth_login_and_rbac_protection():
         candidates = resp_allowed.json()
         assert len(candidates) >= 1
         assert "Rajesh Kumar" in [c["full_name"] for c in candidates]
+

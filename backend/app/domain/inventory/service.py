@@ -80,3 +80,4 @@ class InventoryService:
             "quantity": data.quantity
         })
         return reservation
+

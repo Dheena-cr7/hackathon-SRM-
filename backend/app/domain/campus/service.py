@@ -44,3 +44,4 @@ class CampusService:
     def get_campus_geojson() -> Dict[str, Any]:
         with open(settings.CAMPUS_GEOJSON_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
+

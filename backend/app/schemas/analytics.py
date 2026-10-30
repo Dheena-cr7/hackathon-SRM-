@@ -21,3 +21,4 @@ class CampusMetricsResponse(BaseModel):
     sla_compliance_rate_percent: float
     incidents_by_category: Dict[str, int]
     building_status_list: List[BuildingMetric]
+

@@ -17,3 +17,4 @@ cd frontend
 npm run dev
 
 kill $BACKEND_PID
+

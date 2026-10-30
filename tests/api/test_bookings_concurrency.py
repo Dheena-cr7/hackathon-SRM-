@@ -47,3 +47,4 @@ async def test_double_booking_prevention():
         resp2 = await ac.post("/api/v1/bookings", json=payload2, headers=headers)
         assert resp2.status_code == 409
         assert "Double-booking conflict" in resp2.json()["detail"]
+

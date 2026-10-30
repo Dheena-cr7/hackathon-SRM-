@@ -24,3 +24,4 @@ async def list_rooms(building_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/geojson", response_model=Dict[str, Any])
 async def get_campus_geojson():
     return CampusService.get_campus_geojson()
+

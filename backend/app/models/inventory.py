@@ -77,3 +77,4 @@ class Approval(Base):
 
     purchase_request = relationship("PurchaseRequest", back_populates="approval")
     approver = relationship("User", foreign_keys=[approver_id])
+

@@ -44,3 +44,4 @@ class Settings(BaseModel):
     AI_LAYER3_ENABLED: bool = os.getenv("AI_LAYER3_ENABLED", "False").lower() in ("true", "1")
 
 settings = Settings()
+

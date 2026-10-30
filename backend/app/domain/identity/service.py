@@ -31,3 +31,4 @@ class IdentityService:
     @staticmethod
     async def get_user_by_id(db: AsyncSession, user_id: str) -> Optional[User]:
         return await db.get(User, user_id)
+

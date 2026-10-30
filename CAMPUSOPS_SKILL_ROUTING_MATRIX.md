@@ -1,4 +1,4 @@
-# CAMPUSOPS — RESOLVED SKILL ROUTING MATRIX
+p# CAMPUSOPS — RESOLVED SKILL ROUTING MATRIX
 
 This document maps all operational tasks and discover categories from the **CampusOps Skill Routing Matrix** to verified, active skills installed in `.agent/skills/`.
 

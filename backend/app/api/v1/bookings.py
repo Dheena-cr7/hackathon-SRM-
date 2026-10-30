@@ -75,3 +75,4 @@ async def relocate_booking(
         return BookingResponse.model_validate(booking)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+

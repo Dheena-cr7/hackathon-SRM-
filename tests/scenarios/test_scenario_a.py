@@ -144,3 +144,4 @@ async def test_end_to_end_scenario_a_classroom_electrical_failure():
         # Verify Tech Park is flagged as critical disruption
         tp_status = next(b for b in metrics["building_status_list"] if b["building_id"] == "BLD-TECH-01")
         assert tp_status["operational_status"] == "critical_disruption"
+

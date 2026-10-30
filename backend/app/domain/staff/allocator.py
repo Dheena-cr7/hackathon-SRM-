@@ -76,3 +76,4 @@ class StaffAllocator:
         # Sort descending by score (highest scoring first)
         candidates.sort(key=lambda c: c.score, reverse=True)
         return candidates
+

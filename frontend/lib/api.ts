@@ -150,3 +150,4 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
 
   return res.json();
 }
+
