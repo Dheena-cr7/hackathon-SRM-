@@ -19,17 +19,28 @@ class DisruptionService:
     async def analyze_room_disruption(db: AsyncSession, room_id: str) -> DisruptionImpactResponse:
         disrupted_room = await db.get(Room, room_id)
         if not disrupted_room:
-            raise ValueError(f"Room '{room_id}' not found.")
+            # Flexible room identifier matching (e.g., 'room-tp-204', 'RM-TP-204', '204', 'B204')
+            clean_search = room_id.replace("room-", "").replace("RM-", "").upper()
+            res = await db.execute(
+                select(Room).where(
+                    or_(
+                        Room.id.ilike(f"%{clean_search}%"),
+                        Room.room_number.ilike(f"%{clean_search}%")
+                    )
+                )
+            )
+            disrupted_room = res.scalars().first()
+            if not disrupted_room:
+                raise ValueError(f"Room '{room_id}' not found.")
+            room_id = disrupted_room.id
 
-        # 1. Find all future or ongoing confirmed bookings for this room
-        now = datetime.now(timezone.utc)
+        # 1. Find all confirmed bookings for this room
         bookings_query = (
             select(Booking)
             .where(
                 and_(
                     Booking.room_id == room_id,
-                    Booking.status == "confirmed",
-                    Booking.end_time >= now
+                    Booking.status == "confirmed"
                 )
             )
             .order_by(Booking.start_time.asc())

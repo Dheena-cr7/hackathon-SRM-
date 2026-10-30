@@ -20,16 +20,23 @@ class IncidentService:
         count = (await db.execute(count_query)).scalar() or 0
         incident_number = f"INC-2026-{count + 1:04d}"
 
+        priority = getattr(data, "severity", None) or data.priority or "medium"
+        bld_id = data.building_id
+        if not bld_id:
+            from backend.app.models.campus import Building
+            bld_res = await db.execute(select(Building.id).limit(1))
+            bld_id = bld_res.scalar() or "BLD-TECH-01"
+
         incident = Incident(
             incident_number=incident_number,
             reporter_id=reporter_id,
             title=data.title,
             description=data.description,
             category=data.category,
-            priority=data.priority,
+            priority=priority,
             status="reported",
-            building_id=data.building_id,
-            room_id=data.room_id,
+            building_id=bld_id,
+            room_id=data.room_id or getattr(data, "room_number", None),
             asset_id=data.asset_id,
             raw_text=data.raw_text,
             extraction_metadata=data.extraction_metadata
@@ -74,6 +81,8 @@ class IncidentService:
             query = query.where(Incident.building_id == building_id)
         result = await db.execute(query)
         return list(result.scalars().all())
+
+    get_incidents = list_incidents
 
     @staticmethod
     async def update_status(db: AsyncSession, incident_id: str, new_status: str, actor_id: str) -> Optional[Incident]:

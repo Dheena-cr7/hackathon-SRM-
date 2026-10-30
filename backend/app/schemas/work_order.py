@@ -13,8 +13,22 @@ class WorkOrderCreate(BaseModel):
     estimated_duration_hours: float = 1.0
 
 class WorkOrderTransitionRequest(BaseModel):
-    new_status: str
+    new_status: Optional[str] = None
+    to_status: Optional[str] = None
     resolution_notes: Optional[str] = None
+    notes: Optional[str] = None
+
+    @property
+    def target_status(self) -> str:
+        return self.new_status or self.to_status or ""
+
+    @property
+    def target_notes(self) -> Optional[str]:
+        return self.resolution_notes or self.notes
+
+class WorkOrderNoteRequest(BaseModel):
+    notes: str
+    comment: Optional[str] = None
 
 class TechnicianCandidate(BaseModel):
     user_id: str
@@ -42,4 +56,3 @@ class WorkOrderResponse(BaseModel):
 
     class Config:
         from_attributes = True
-

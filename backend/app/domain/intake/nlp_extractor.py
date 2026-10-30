@@ -7,7 +7,7 @@ using regex pattern matching and campus dictionary entity linking.
 
 import re
 from typing import Dict, Any, List, Optional
-from backend.app.schemas.incident import NLPAnalyzeResponse
+from backend.app.schemas.incident import NLPAnalyzeResponse, ExtractedEntities
 
 # Category Pattern Rules
 CATEGORY_PATTERNS = {
@@ -158,6 +158,21 @@ def extract_incident_features(text: str) -> NLPAnalyzeResponse:
 
     building_name = BUILDING_NAMES.get(matched_building_id) if matched_building_id else None
 
+    has_sparks = bool(re.search(r"\b(spark|smoke|fire|shock)\b", cleaned, re.IGNORECASE))
+    is_safety = bool(urgency == "critical" or re.search(r"\b(hazard|danger|emergency|burn)\b", cleaned, re.IGNORECASE))
+    
+    extracted = ExtractedEntities(
+        building_code=matched_building_id,
+        building_name=building_name,
+        room_number=matched_room_num,
+        equipment_type=matched_asset_name or detected_category,
+        has_sparks=has_sparks,
+        is_safety_hazard=is_safety,
+        time_mentions=[time_constraint] if time_constraint else []
+    )
+
+    clarification_list = [clarification_question] if clarification_question else []
+
     return NLPAnalyzeResponse(
         category=detected_category,
         building_id=matched_building_id,
@@ -167,8 +182,13 @@ def extract_incident_features(text: str) -> NLPAnalyzeResponse:
         asset_id=matched_asset_id,
         asset_name=matched_asset_name,
         urgency=urgency,
+        severity=urgency,
         time_constraint=time_constraint,
         missing_fields=missing_fields,
         clarification_question=clarification_question,
-        confidence_score=0.95
+        clarification_questions=clarification_list,
+        confidence_score=0.95,
+        confidence=0.95,
+        explanation=f"Identified {detected_category.upper()} disruption with {urgency.upper()} urgency based on campus operational vocabulary.",
+        extracted_entities=extracted
     )

@@ -7,6 +7,7 @@ import json
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from backend.app.models.campus import Building, Room, Asset
 from backend.app.models.incident import Incident
 from backend.app.core.config import settings
@@ -37,7 +38,9 @@ class CampusService:
 
     @staticmethod
     async def get_rooms_by_building(db: AsyncSession, building_id: str) -> List[Room]:
-        result = await db.execute(select(Room).where(Room.building_id == building_id))
+        result = await db.execute(
+            select(Room).options(selectinload(Room.assets)).where(Room.building_id == building_id)
+        )
         return list(result.scalars().all())
 
     @staticmethod

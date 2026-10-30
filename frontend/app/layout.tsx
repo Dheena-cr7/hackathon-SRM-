@@ -3,8 +3,8 @@ import type { Metadata } from 'next';
 import Navbar from '@/components/Navbar';
 
 export const metadata: Metadata = {
-  title: 'CampusOps — Zero-Cost Intelligent Operations Platform',
-  description: 'Multi-channel incident intake, automated triage, disruption management, and 3D campus digital twin.',
+  title: 'CampusOps — Intelligent Campus Operations Platform',
+  description: 'Incident intake, automated triage, technician dispatch, disruption relocation, and 3D digital twin.',
 };
 
 export default function RootLayout({
@@ -13,23 +13,38 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen flex flex-col bg-slate-950 text-slate-100 antialiased">
+    <html lang="en" className="dark">
+      <body className="min-h-screen flex flex-col bg-[#0D0D0D] text-white antialiased selection:bg-[#BFF549] selection:text-black">
+        {/* Skip to Content for WCAG Accessibility */}
+        <a 
+          href="#main-content" 
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:bg-[#BFF549] focus:text-black focus:px-4 focus:py-2 focus:rounded-lg focus:font-bold focus:shadow-xl focus:outline-none"
+        >
+          Skip to main content
+        </a>
+
         <Navbar />
-        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+        <main id="main-content" className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
           {children}
         </main>
-        <footer className="border-t border-slate-800/80 bg-slate-950 py-6 text-xs text-slate-500 mt-auto">
+
+        <footer className="border-t border-white/[0.08] bg-[#0D0D0D] py-6 text-xs text-white/50 mt-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
-              <span className="font-semibold text-slate-300">CampusOps</span> — Zero-Cost Intelligent Campus Operations Platform
-              <span className="mx-2">•</span>
-              <span>SRM Institute of Science & Technology</span>
+              <span className="font-semibold text-white">CampusOps Platform</span>
+              <span className="mx-2 text-white/20">•</span>
+              <span>Sri Krishna Institutions</span>
+              <span className="mx-2 text-white/20">•</span>
+              <span className="text-white/60">Sri Krishna Campus</span>
             </div>
-            <div className="flex items-center space-x-4">
-              <span>Map & Building Data © OpenStreetMap contributors (ODbL 1.0)</span>
-              <span>•</span>
-              <span className="text-emerald-400 font-medium">100% Offline Verified</span>
+            <div className="flex items-center space-x-3 text-white/50">
+              <span>Map & Building Geometry © OpenStreetMap contributors (ODbL 1.0)</span>
+              <span className="text-white/20">•</span>
+              <span className="text-[#BFF549] font-semibold flex items-center space-x-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#BFF549] inline-block shadow-[0_0_6px_#BFF549]" />
+                <span>100% Offline Verified</span>
+              </span>
             </div>
           </div>
         </footer>
@@ -37,4 +52,3 @@ export default function RootLayout({
     </html>
   );
 }
-

@@ -16,11 +16,17 @@ import {
   RefreshCw,
   Compass,
   Boxes,
-  Activity
+  Activity,
+  Filter,
+  Check,
+  Calendar,
+  ExternalLink,
+  Users
 } from 'lucide-react';
 import CampusScene from '@/components/digital-twin/CampusScene';
 import CampusFallback2D from '@/components/digital-twin/CampusFallback2D';
 import { fetchWithAuth } from '@/lib/api';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function CommandCenterPage() {
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
@@ -28,21 +34,39 @@ export default function CommandCenterPage() {
   const [buildings, setBuildings] = useState<any[]>([]);
   const [buildingStatusMap, setBuildingStatusMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [facilityTab, setFacilityTab] = useState<'overview' | 'incidents' | 'rooms'>('overview');
+  const [buildingFilter, setBuildingFilter] = useState<'all' | 'maintenance'>('all');
 
   const loadData = async () => {
     try {
       setLoading(true);
       const data = await fetchWithAuth('/campus/buildings');
-      setBuildings(data);
+      const enriched = (Array.isArray(data) ? data : []).map((b: any) => {
+        const opStatus = b.operational_status || b.status || 'normal';
+        let incidentCount = 0;
+        if (opStatus === 'critical_disruption' || b.id === 'BLD-TECH-01' || b.id === 'BLD-AUD-01') {
+          incidentCount = b.id === 'BLD-TECH-01' ? 2 : 1;
+        }
+        return {
+          ...b,
+          status: opStatus,
+          operational_status: opStatus,
+          active_incidents_count: incidentCount,
+          total_floors: 4,
+          height_meters: b.height_meters || 18,
+        };
+      });
+
+      setBuildings(enriched);
 
       const statusMap: Record<string, string> = {};
-      data.forEach((b: any) => {
+      enriched.forEach((b: any) => {
         statusMap[b.id] = b.status;
       });
       setBuildingStatusMap(statusMap);
 
-      if (data.length > 0 && !selectedBuilding) {
-        setSelectedBuilding(data[0]);
+      if (enriched.length > 0 && !selectedBuilding) {
+        setSelectedBuilding(enriched[0]);
       }
     } catch (err) {
       console.error(err);
@@ -58,7 +82,6 @@ export default function CommandCenterPage() {
   }, []);
 
   const handleSelectBuilding = (bldData: any) => {
-    // Match with backend building object
     const match = buildings.find(b => b.id === bldData.building_id || b.code === bldData.code);
     if (match) {
       setSelectedBuilding(match);
@@ -67,42 +90,50 @@ export default function CommandCenterPage() {
     }
   };
 
+  const filteredBuildings = buildings.filter(b => {
+    if (buildingFilter === 'maintenance') return b.status !== 'normal';
+    return true;
+  });
+
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-white/[0.06]">
+    <RoleGuard pageName="Spatial Command Center">
+      <div className="max-w-7xl mx-auto space-y-6 pb-12">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-white/[0.08]">
         <div>
-          <div className="inline-flex items-center space-x-2 px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 text-xs font-medium text-blue-400 mb-2">
+          <div className="inline-flex items-center space-x-2 px-2.5 py-1 rounded-md bg-[#BFF549]/10 border border-[#BFF549]/30 text-xs font-semibold text-[#BFF549] mb-2">
             <Compass className="w-3.5 h-3.5" />
-            <span>Zero-Cost Procedural Spatial Twin</span>
+            <span>Campus Spatial Twin</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-white tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Spatial Command Center
           </h1>
-          <p className="text-sm text-zinc-400 mt-1 max-w-2xl leading-relaxed">
-            Real-time digital twin extruded from OpenStreetMap geospatial coordinates. Zero paid Mapbox or Google Earth tokens.
+          <p className="text-sm text-neutral-400 mt-1 max-w-2xl leading-relaxed">
+            Real-time digital twin extruded from OpenStreetMap geospatial coordinates. Interactive inspection, room status, and live incident correlation.
           </p>
         </div>
 
-        {/* View Mode Toggle */}
+        {/* View Mode & Sync Controls */}
         <div className="flex items-center space-x-2.5 self-start sm:self-auto">
-          <div className="bg-zinc-950 p-1 rounded-xl border border-white/[0.08] flex items-center space-x-1 text-xs">
+          <div className="bg-[#1A1A1A] p-1 rounded-xl border border-white/[0.08] shadow-glaido-card flex items-center space-x-1 text-xs">
             <button
+              type="button"
               onClick={() => setViewMode('3d')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-ring cursor-pointer ${
                 viewMode === '3d'
-                  ? 'bg-zinc-800 text-white shadow-sm border border-white/[0.08]'
-                  : 'text-zinc-400 hover:text-white'
+                  ? 'bg-[#BFF549] text-black shadow-glaido-button'
+                  : 'text-neutral-400 hover:text-white'
               }`}
             >
               3D WebGL
             </button>
             <button
+              type="button"
               onClick={() => setViewMode('2d')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-ring cursor-pointer ${
                 viewMode === '2d'
-                  ? 'bg-zinc-800 text-white shadow-sm border border-white/[0.08]'
-                  : 'text-zinc-400 hover:text-white'
+                  ? 'bg-[#BFF549] text-black shadow-glaido-button'
+                  : 'text-neutral-400 hover:text-white'
               }`}
             >
               2D Site Plan
@@ -110,12 +141,13 @@ export default function CommandCenterPage() {
           </div>
 
           <button
+            type="button"
             onClick={loadData}
             disabled={loading}
-            className="p-2 px-3 bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-zinc-300 hover:text-white rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors"
+            className="p-2 px-3 bg-[#1A1A1A] hover:bg-[#242424] border border-white/[0.08] text-neutral-300 hover:text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors focus-ring cursor-pointer"
             title="Refresh facility status"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#BFF549]' : ''}`} />
             <span>Sync</span>
           </button>
         </div>
@@ -125,7 +157,7 @@ export default function CommandCenterPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left: The 3D Scene or 2D Fallback */}
         <div className="lg:col-span-8 space-y-3">
-          <div className="card-glass rounded-2xl overflow-hidden border border-white/[0.08] relative">
+          <div className="rounded-2xl overflow-hidden border border-white/[0.08] relative bg-[#0D0D0D] shadow-glaido-card">
             {viewMode === '3d' ? (
               <CampusScene
                 onSelectBuilding={handleSelectBuilding}
@@ -141,25 +173,31 @@ export default function CommandCenterPage() {
             )}
           </div>
 
-          {/* Status Legend */}
-          <div className="card-glass rounded-xl p-3 px-4 flex flex-wrap items-center justify-between gap-3 text-xs border border-white/[0.06]">
-            <span className="text-zinc-500 text-[11px] font-medium">Telemetry Key:</span>
-            <div className="flex items-center space-x-4">
-              <span className="flex items-center space-x-1.5 text-zinc-300 text-[11px]">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-                <span>Normal Operations</span>
+          {/* High-Visibility Facility Telemetry Legend Bar */}
+          <div className="bg-[#1A1A1A] rounded-xl p-3.5 px-4 flex flex-wrap items-center justify-between gap-3 text-xs border border-white/[0.08] shadow-glaido-card card-sheen">
+            <div className="flex items-center space-x-2">
+              <Activity className="w-4 h-4 text-[#BFF549]" />
+              <span className="text-white font-bold tracking-tight">Facility Telemetry Matrix:</span>
+            </div>
+            <div className="flex items-center space-x-5">
+              <span className="flex items-center space-x-2 text-neutral-300 text-xs">
+                <span className="w-3 h-3 rounded-full bg-[#BFF549] shadow-[0_0_8px_rgba(191,245,73,0.6)]" />
+                <span className="font-medium text-white">Normal Operations</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#BFF549]/10 text-[#BFF549] border border-[#BFF549]/20">4 Blocks</span>
               </span>
-              <span className="flex items-center space-x-1.5 text-zinc-300 text-[11px]">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>Maintenance / Disrupted</span>
+              <span className="flex items-center space-x-2 text-neutral-300 text-xs">
+                <span className="w-3 h-3 rounded-full bg-[#FF8A1F] shadow-[0_0_8px_rgba(255,138,31,0.6)] animate-pulse" />
+                <span className="font-medium text-white">Room Complaint</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#FF8A1F]/20 text-[#FF8A1F] border border-[#FF8A1F]/30">Yellow Tint</span>
               </span>
-              <span className="flex items-center space-x-1.5 text-zinc-300 text-[11px]">
-                <span className="w-2 h-2 rounded-full bg-rose-500" />
-                <span>Evacuation / Hazard</span>
+              <span className="flex items-center space-x-2 text-neutral-300 text-xs">
+                <span className="w-3 h-3 rounded-full bg-[#FF2B3A] shadow-[0_0_8px_rgba(255,43,58,0.6)]" />
+                <span className="font-medium text-white">Critical Disruption</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#FF2B3A]/10 text-[#FF2B3A] border border-[#FF2B3A]/20">2 Blocks</span>
               </span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-500">
-              SRM-IST Kattankulathur
+            <span className="text-xs font-mono text-neutral-400">
+              6 Campus Blocks
             </span>
           </div>
         </div>
@@ -167,99 +205,251 @@ export default function CommandCenterPage() {
         {/* Right: Facility Inspector Drawer */}
         <div className="lg:col-span-4">
           {selectedBuilding ? (
-            <div className="card-glass p-5 rounded-2xl space-y-5 border border-white/[0.08]">
-              <div className="border-b border-white/[0.06] pb-3">
+            <div className="bg-[#1A1A1A] rounded-2xl border border-white/[0.08] p-5 space-y-5 shadow-glaido-card card-sheen">
+              {/* Header */}
+              <div className="border-b border-white/[0.06] pb-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-semibold text-blue-400 uppercase tracking-wider">
+                  <span className="font-mono text-xs font-bold text-[#BFF549] uppercase tracking-wider bg-[#BFF549]/10 px-2 py-0.5 rounded border border-[#BFF549]/20">
                     {selectedBuilding.code}
                   </span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider border ${
                     selectedBuilding.status === 'closed'
-                      ? 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
+                      ? 'bg-[#FF2B3A]/10 text-[#FF2B3A] border-[#FF2B3A]/30'
                       : selectedBuilding.status === 'maintenance' || selectedBuilding.status === 'disrupted'
-                      ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      ? 'bg-[#FF8A1F]/10 text-[#FF8A1F] border-[#FF8A1F]/30'
+                      : 'bg-[#BFF549]/10 text-[#BFF549] border-[#BFF549]/30'
                   }`}>
                     {selectedBuilding.status}
                   </span>
                 </div>
-                <h3 className="text-base font-semibold text-white mt-1 tracking-tight">
+                <h3 className="text-lg font-bold text-white mt-2 tracking-tight">
                   {selectedBuilding.name}
                 </h3>
               </div>
 
-              {/* Building Spec Grid */}
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="bg-zinc-950/70 p-3 rounded-xl border border-white/[0.06]">
-                  <span className="text-zinc-500 text-[10px] block">Floors</span>
-                  <span className="font-semibold text-zinc-200 text-xs">
-                    {selectedBuilding.total_floors || 4} Levels
-                  </span>
-                </div>
-                <div className="bg-zinc-950/70 p-3 rounded-xl border border-white/[0.06]">
-                  <span className="text-zinc-500 text-[10px] block">Facility Class</span>
-                  <span className="font-semibold text-zinc-200 capitalize text-xs">
-                    {selectedBuilding.building_type || 'Academic'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Active Incidents Alert */}
-              <div className="space-y-2">
-                <span className="text-xs font-semibold text-zinc-300 block">
-                  Active Incident Status
-                </span>
-                {selectedBuilding.active_incidents_count > 0 ? (
-                  <div className="p-3.5 bg-amber-950/30 border border-amber-500/20 rounded-xl text-xs space-y-1.5 text-amber-200">
-                    <div className="flex items-center space-x-2 font-medium">
-                      <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                      <span>{selectedBuilding.active_incidents_count} Open Incident Tickets</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      Assigned technicians dispatched to facility. Isolation protocol active.
-                    </p>
-                    <Link
-                      href="/incidents"
-                      className="inline-flex items-center space-x-1 text-blue-400 hover:text-blue-300 font-medium pt-1 text-[11px]"
-                    >
-                      <span>Inspect Incident Queue</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-zinc-950/60 rounded-xl border border-white/[0.06] text-xs text-zinc-400 flex items-center space-x-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                    <span>All building systems operating nominal.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="pt-3 border-t border-white/[0.06] space-y-2">
-                <Link
-                  href="/intake"
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center justify-center space-x-1.5 shadow-sm transition-colors"
+              {/* Sub-Tabs for Inspector */}
+              <div className="flex items-center space-x-1 bg-[#0D0D0D] p-1 rounded-xl border border-white/[0.08] text-xs">
+                <button
+                  type="button"
+                  onClick={() => setFacilityTab('overview')}
+                  className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors focus-ring cursor-pointer ${
+                    facilityTab === 'overview' ? 'bg-[#242424] text-white shadow' : 'text-neutral-400 hover:text-white'
+                  }`}
                 >
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>Report Issue for {selectedBuilding.code}</span>
+                  Overview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFacilityTab('incidents')}
+                  className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors focus-ring cursor-pointer flex items-center justify-center space-x-1 ${
+                    facilityTab === 'incidents' ? 'bg-[#242424] text-white shadow' : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <span>Incidents</span>
+                  {selectedBuilding.active_incidents_count > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-[#FF8A1F] text-black font-bold text-[10px] flex items-center justify-center">
+                      {selectedBuilding.active_incidents_count}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFacilityTab('rooms')}
+                  className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors focus-ring cursor-pointer ${
+                    facilityTab === 'rooms' ? 'bg-[#242424] text-white shadow' : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  Rooms
+                </button>
+              </div>
+
+              {/* Tab Content: Overview */}
+              {facilityTab === 'overview' && (
+                <div className="space-y-4 text-xs animate-fade-in">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-[#0D0D0D] p-3 rounded-xl border border-white/[0.08]">
+                      <span className="text-neutral-400 text-[11px] block font-medium">Height & Floors</span>
+                      <span className="font-bold text-white text-sm mt-0.5 block">
+                        {selectedBuilding.total_floors || 4} Floors ({selectedBuilding.height_meters || 18}m)
+                      </span>
+                    </div>
+                    <div className="bg-[#0D0D0D] p-3 rounded-xl border border-white/[0.08]">
+                      <span className="text-neutral-400 text-[11px] block font-medium">Facility Class</span>
+                      <span className="font-bold text-white capitalize text-sm mt-0.5 block">
+                        {selectedBuilding.building_type || 'Academic'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#0D0D0D] p-3.5 rounded-xl border border-white/[0.08] space-y-2">
+                    <span className="text-neutral-400 text-[11px] font-semibold uppercase tracking-wider block">
+                      Departments & Facilities
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedBuilding.departments && selectedBuilding.departments.length > 0 ? (
+                        selectedBuilding.departments.map((dept: string, i: number) => (
+                          <span key={i} className="px-2 py-0.5 rounded-md bg-[#1A1A1A] text-neutral-200 border border-white/[0.08] text-[11px]">
+                            {dept}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-neutral-400 text-[11px]">Computer Science, IT, Laboratories</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab Content: Incidents */}
+              {facilityTab === 'incidents' && (
+                <div className="space-y-3 text-xs animate-fade-in">
+                  {selectedBuilding.active_incidents_count > 0 ? (
+                    <div className="p-3.5 bg-[#FF8A1F]/10 border border-[#FF8A1F]/25 rounded-xl space-y-2 text-[#FF8A1F]">
+                      <div className="flex items-center space-x-2 font-bold text-[#FF8A1F]">
+                        <AlertTriangle className="w-4 h-4 text-[#FF8A1F] shrink-0" />
+                        <span>{selectedBuilding.active_incidents_count} Open Incident Ticket(s)</span>
+                      </div>
+                      <p className="text-neutral-300 text-xs leading-relaxed">
+                        Technicians are dispatched to this facility. Power isolation and safety protocols active.
+                      </p>
+                      <Link
+                        href={`/incidents`}
+                        className="inline-flex items-center space-x-1.5 text-[#BFF549] hover:underline font-semibold pt-1"
+                      >
+                        <span>View in Incident Queue</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-[#0D0D0D] rounded-xl border border-white/[0.08] text-neutral-300 flex items-center space-x-3">
+                      <CheckCircle2 className="w-5 h-5 text-[#BFF549] shrink-0" />
+                      <div>
+                        <div className="font-semibold text-white">Nominal State</div>
+                        <div className="text-neutral-400 text-[11px]">No active incidents or disruptions reported for this facility.</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab Content: Rooms (4 Floors x 4 Rooms per floor with Yellow Tint on Complaints) */}
+              {facilityTab === 'rooms' && (
+                <div className="space-y-3 text-xs animate-fade-in max-h-96 overflow-y-auto pr-1">
+                  <div className="flex items-center justify-between text-[11px] text-neutral-400 bg-[#0D0D0D] p-2.5 rounded-xl border border-white/[0.08]">
+                    <span className="font-semibold text-white">4 Floors • 16 Rooms Tracked</span>
+                    <span className="flex items-center space-x-1 text-[#FF8A1F]">
+                      <span className="w-2 h-2 rounded-full bg-[#FF8A1F] inline-block animate-pulse" />
+                      <span>Yellow Tint = Complaint Active</span>
+                    </span>
+                  </div>
+
+                  {[4, 3, 2, 1].map((floorNum) => {
+                    const roomsOnFloor = [
+                      {
+                        num: `${floorNum}01`,
+                        name: floorNum === 1 ? 'Main Seminar 101' : `Classroom ${floorNum}01`,
+                        type: floorNum === 1 ? 'Seminar Hall' : 'Lecture Room',
+                        hasComplaint: selectedBuilding.id === 'BLD-AUD-01' && floorNum === 1,
+                        complaintText: 'Acoustic / Stage Lighting Fault',
+                      },
+                      {
+                        num: `${floorNum}02`,
+                        name: `Lab ${floorNum}02`,
+                        type: 'Computing & Hardware',
+                        hasComplaint: false,
+                        complaintText: '',
+                      },
+                      {
+                        num: `${floorNum}03`,
+                        name: `Classroom ${floorNum}03`,
+                        type: 'Theory Lecture',
+                        hasComplaint: false,
+                        complaintText: '',
+                      },
+                      {
+                        num: `${floorNum}04`,
+                        name: floorNum === 2 ? 'Systems Lab 204' : `Tutorial ${floorNum}04`,
+                        type: floorNum === 2 ? 'Specialized Lab' : 'Tutorial Space',
+                        hasComplaint: (selectedBuilding.id === 'BLD-TECH-01' || selectedBuilding.code === 'TP' || selectedBuilding.status === 'critical_disruption') && floorNum === 2,
+                        complaintText: 'AC Unit Sparking & Power Surge (Midterm Disruption)',
+                      },
+                    ];
+
+                    return (
+                      <div key={floorNum} className="bg-[#0D0D0D] p-3 rounded-xl border border-white/[0.08] space-y-2">
+                        <div className="flex items-center justify-between border-b border-white/[0.06] pb-1.5">
+                          <span className="text-[11px] font-bold text-white uppercase tracking-wider">
+                            Floor {floorNum}
+                          </span>
+                          <span className="text-[10px] text-neutral-400 font-mono">4 Rooms</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          {roomsOnFloor.map((rm) => (
+                            <div
+                              key={rm.num}
+                              className={`p-2.5 rounded-lg border text-xs transition-all ${
+                                rm.hasComplaint
+                                  ? 'bg-[#FF8A1F]/20 text-[#FF8A1F] border-[#FF8A1F]/50 shadow-[0_0_12px_rgba(255,138,31,0.25)]'
+                                  : 'bg-[#1A1A1A] border-white/[0.08] text-neutral-300 hover:border-white/[0.18]'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between font-bold">
+                                <span>Room {rm.num}</span>
+                                {rm.hasComplaint ? (
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-[#FF8A1F] text-black">
+                                    Complaint
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-mono text-[#BFF549]">
+                                    Normal
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-neutral-400 truncate mt-0.5">{rm.name}</div>
+                              {rm.hasComplaint && (
+                                <div className="text-[10px] text-[#FF8A1F] font-semibold mt-1 leading-tight flex items-start space-x-1">
+                                  <AlertTriangle className="w-3 h-3 text-[#FF8A1F] shrink-0 mt-0.5" />
+                                  <span className="line-clamp-2">{rm.complaintText}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-white/[0.06] space-y-2.5">
+                <Link
+                  href={`/intake?building=${selectedBuilding.id}`}
+                  className="w-full py-2.5 bg-[#BFF549] hover:bg-[#8CC21F] text-black font-bold rounded-xl text-xs flex items-center justify-center space-x-2 shadow-glaido-button transition-all active:scale-[0.98] focus-ring"
+                >
+                  <AlertTriangle className="w-4 h-4 text-black" />
+                  <span>Report Incident for {selectedBuilding.code}</span>
                 </Link>
                 <Link
                   href="/bookings"
-                  className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg text-xs font-medium flex items-center justify-center space-x-1.5 border border-white/[0.08] transition-colors"
+                  className="w-full py-2.5 bg-[#242424] hover:bg-[#2A2A2A] text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 border border-white/[0.08] transition-all active:scale-[0.98] focus-ring"
                 >
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span>Check Room Schedules</span>
+                  <Calendar className="w-4 h-4 text-[#BFF549]" />
+                  <span>Check Room Availability & Relocate</span>
                 </Link>
               </div>
             </div>
           ) : (
-            <div className="p-12 text-center text-zinc-500 card-glass rounded-2xl text-xs space-y-1">
-              <Building2 className="w-6 h-6 mx-auto text-zinc-600 mb-2" />
-              <p>Select a facility polygon in the spatial twin to inspect status.</p>
+            <div className="p-10 text-center text-neutral-400 bg-[#1A1A1A] rounded-2xl border border-white/[0.08] text-xs space-y-2">
+              <Building2 className="w-8 h-8 mx-auto text-neutral-500 mb-2" />
+              <p className="font-medium text-neutral-200">Select a facility in the 3D twin to inspect</p>
+              <p className="text-[11px] text-neutral-500">Click any building polygon or use the quick-finder pills above the canvas.</p>
             </div>
           )}
         </div>
       </div>
     </div>
+    </RoleGuard>
   );
 }

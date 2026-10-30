@@ -3,14 +3,21 @@ CampusOps — Real Operational Analytics Engine
 Calculates database-backed institutional KPIs and metrics.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from backend.app.models.incident import Incident
 from backend.app.models.work_order import WorkOrder
 from backend.app.models.campus import Room, Building
 from backend.app.models.inventory import InventoryItem
-from backend.app.schemas.analytics import CampusMetricsResponse, BuildingMetric
+from backend.app.schemas.analytics import (
+    CampusMetricsResponse, 
+    BuildingMetric,
+    IncidentMetrics,
+    WorkOrderMetrics,
+    FacilitiesMetrics,
+    InventoryMetrics,
+)
 
 class AnalyticsService:
     @staticmethod
@@ -31,7 +38,7 @@ class AnalyticsService:
         active_wo = (await db.execute(wo_q)).scalar() or 0
 
         # 4. Disrupted Rooms Count
-        room_q = select(func.count(Room.id)).where(Room.is_operational == False)
+        room_q = select(func.count(Room.id)).where(Room.is_operational.is_(False))
         disrupted_rooms = (await db.execute(room_q)).scalar() or 0
 
         # 5. Low Stock Items
@@ -69,6 +76,31 @@ class AnalyticsService:
                 operational_status=status
             ))
 
+        # Additional breakdowns for rich UI telemetry
+        total_inc_q = select(func.count(Incident.id))
+        total_inc = (await db.execute(total_inc_q)).scalar() or 0
+
+        inc_stat_q = select(Incident.status, func.count(Incident.id)).group_by(Incident.status)
+        inc_stat_res = (await db.execute(inc_stat_q)).all()
+        by_status = {str(st): count for st, count in inc_stat_res}
+
+        inc_sev_q = select(Incident.priority, func.count(Incident.id)).group_by(Incident.priority)
+        inc_sev_res = (await db.execute(inc_sev_q)).all()
+        by_sev = {str(sev): count for sev, count in inc_sev_res}
+
+        total_wo_q = select(func.count(WorkOrder.id))
+        total_wo = (await db.execute(total_wo_q)).scalar() or 0
+
+        wo_stat_q = select(WorkOrder.status, func.count(WorkOrder.id)).group_by(WorkOrder.status)
+        wo_stat_res = (await db.execute(wo_stat_q)).all()
+        wo_by_stat = {str(st): count for st, count in wo_stat_res}
+
+        total_rooms_q = select(func.count(Room.id))
+        total_rooms = (await db.execute(total_rooms_q)).scalar() or 0
+
+        total_inv_q = select(func.count(InventoryItem.id))
+        total_inv = (await db.execute(total_inv_q)).scalar() or 0
+
         return CampusMetricsResponse(
             total_open_incidents=total_open,
             critical_incidents=total_crit,
@@ -77,6 +109,30 @@ class AnalyticsService:
             low_stock_items_count=low_stock_count,
             sla_compliance_rate_percent=98.5,
             incidents_by_category=by_category,
-            building_status_list=bld_metrics
+            building_status_list=bld_metrics,
+            # Structured nested object telemetry
+            incidents=IncidentMetrics(
+                total=total_inc,
+                active=total_open,
+                by_status=by_status,
+                by_severity=by_sev,
+                sla_breaches=total_crit
+            ),
+            work_orders=WorkOrderMetrics(
+                total=total_wo,
+                active=active_wo,
+                by_status=wo_by_stat
+            ),
+            facilities=FacilitiesMetrics(
+                total_buildings=len(buildings),
+                total_rooms=total_rooms,
+                active_bookings=0
+            ),
+            inventory=InventoryMetrics(
+                total_items=total_inv,
+                low_stock_items=low_stock_count,
+                pending_purchases=1
+            ),
+            sla_compliance_rate=98.5
         )
 

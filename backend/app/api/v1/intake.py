@@ -17,7 +17,10 @@ router = APIRouter(prefix="/intake", tags=["Incident Intake & AI"])
 @router.post("/analyze", response_model=NLPAnalyzeResponse)
 async def analyze_intake_text(data: NLPAnalyzeRequest):
     """Analyze raw natural-language report text through Layer 1 deterministic extractor."""
-    return extract_incident_features(data.text)
+    text_to_analyze = data.query_text
+    if not text_to_analyze:
+        raise HTTPException(status_code=400, detail="Text or raw_text field is required for incident intake analysis")
+    return extract_incident_features(text_to_analyze)
 
 @router.post("/duplicates")
 async def check_duplicate_incidents(
@@ -25,19 +28,20 @@ async def check_duplicate_incidents(
     db: AsyncSession = Depends(get_db)
 ):
     """Check for duplicate or correlated open incidents using in-memory TF-IDF cosine similarity."""
-    incidents = await IncidentService.get_incidents(db)
+    text_to_check = data.query_text
+    incidents = await IncidentService.list_incidents(db)
     existing_list = [
         {
             "id": inc.id,
             "incident_number": inc.incident_number,
             "title": inc.title,
             "description": inc.description,
-            "status": inc.status.value,
+            "status": inc.status.value if hasattr(inc.status, "value") else str(inc.status),
             "room_number": inc.room_id,
         }
         for inc in incidents
     ]
-    duplicates = IncidentSimilarityEngine.find_duplicates(data.text, existing_list)
+    duplicates = IncidentSimilarityEngine.find_duplicates(text_to_check, existing_list)
     return {"duplicate_candidates": duplicates, "count": len(duplicates)}
 
 @router.post("/submit", response_model=IncidentResponse, status_code=status.HTTP_201_CREATED)

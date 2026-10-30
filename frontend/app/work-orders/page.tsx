@@ -9,35 +9,52 @@ import {
   ArrowRight, 
   Award, 
   AlertCircle, 
-  ChevronRight,
-  ShieldCheck,
-  RefreshCw,
-  Cpu,
-  Layers,
-  Sparkles,
-  Check
+  ShieldCheck, 
+  RefreshCw, 
+  Cpu, 
+  Layers, 
+  Sparkles, 
+  Building2, 
+  AlertTriangle, 
+  MessageSquare, 
+  Send,
+  Users,
+  ShieldAlert,
+  UserX,
+  Package
 } from 'lucide-react';
 import { fetchWithAuth, getActiveUser } from '@/lib/api';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function WorkOrdersPage() {
+  const [activeTab, setActiveTab] = useState<'orders' | 'roster'>('orders');
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [selectedWO, setSelectedWO] = useState<any | null>(null);
   const [candidates, setCandidates] = useState<any[]>([]);
+  const [staffRoster, setStaffRoster] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [transitionLoading, setTransitionLoading] = useState(false);
   const [notes, setNotes] = useState('');
   const [actionMessage, setActionMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const loadWorkOrders = async () => {
+  // Disruption Scenario B State
+  const [disruptionLoading, setDisruptionLoading] = useState(false);
+  const [disruptionResult, setDisruptionResult] = useState<any | null>(null);
+
+  const loadData = async () => {
     try {
       setLoading(true);
-      const data = await fetchWithAuth('/work-orders');
-      setWorkOrders(data);
-      if (data.length > 0 && !selectedWO) {
-        setSelectedWO(data[0]);
+      const [woData, rosterData] = await Promise.all([
+        fetchWithAuth('/work-orders'),
+        fetchWithAuth('/work-orders/staff-roster').catch(() => []),
+      ]);
+      setWorkOrders(woData);
+      setStaffRoster(rosterData);
+      if (woData.length > 0 && !selectedWO) {
+        setSelectedWO(woData[0]);
       } else if (selectedWO) {
-        const updated = data.find((w: any) => w.id === selectedWO.id);
+        const updated = woData.find((w: any) => w.id === selectedWO.id);
         if (updated) setSelectedWO(updated);
       }
     } catch (err) {
@@ -48,7 +65,7 @@ export default function WorkOrdersPage() {
   };
 
   useEffect(() => {
-    loadWorkOrders();
+    loadData();
   }, []);
 
   useEffect(() => {
@@ -62,7 +79,7 @@ export default function WorkOrdersPage() {
   const loadCandidates = async (woId: string) => {
     try {
       setCandidatesLoading(true);
-      const data = await fetchWithAuth(`/work-orders/${woId}/candidates`);
+      const data = await fetchWithAuth(`/work-orders/technician-recommendations/${selectedWO?.category || 'electrical'}`);
       setCandidates(data);
     } catch (err) {
       console.error(err);
@@ -77,19 +94,41 @@ export default function WorkOrdersPage() {
     setTransitionLoading(true);
     setActionMessage(null);
     try {
-      const activeUser = getActiveUser();
       const updated = await fetchWithAuth(`/work-orders/${selectedWO.id}/assign`, {
         method: 'POST',
         body: JSON.stringify({
           technician_id: technicianId,
-          assigned_by: activeUser.id,
+          reason: 'Dispatcher assigned certified technician',
         }),
       });
       setSelectedWO(updated);
-      await loadWorkOrders();
-      setActionMessage({ text: 'Technician dispatched and work order assigned!', type: 'success' });
+      await loadData();
+      setActionMessage({ text: 'Technician successfully dispatched and work order assigned!', type: 'success' });
+      setTimeout(() => setActionMessage(null), 4000);
     } catch (err) {
       setActionMessage({ text: `Assignment failed: ${(err as Error).message}`, type: 'error' });
+    } finally {
+      setTransitionLoading(false);
+    }
+  };
+
+  const handleAddNote = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedWO || !notes.trim()) return;
+    setTransitionLoading(true);
+    setActionMessage(null);
+    try {
+      const updated = await fetchWithAuth(`/work-orders/${selectedWO.id}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ notes: notes }),
+      });
+      setSelectedWO(updated);
+      setNotes('');
+      await loadData();
+      setActionMessage({ text: 'Field note added to work order history!', type: 'success' });
+      setTimeout(() => setActionMessage(null), 4000);
+    } catch (err) {
+      setActionMessage({ text: `Failed to add note: ${(err as Error).message}`, type: 'error' });
     } finally {
       setTransitionLoading(false);
     }
@@ -103,18 +142,41 @@ export default function WorkOrdersPage() {
       const updated = await fetchWithAuth(`/work-orders/${selectedWO.id}/transition`, {
         method: 'POST',
         body: JSON.stringify({
+          new_status: toStatus,
           to_status: toStatus,
+          resolution_notes: notes || undefined,
           notes: notes || undefined,
         }),
       });
       setSelectedWO(updated);
       setNotes('');
-      await loadWorkOrders();
+      await loadData();
       setActionMessage({ text: `Advanced state to: ${toStatus.replace('_', ' ')}`, type: 'success' });
+      setTimeout(() => setActionMessage(null), 4000);
     } catch (err) {
       setActionMessage({ text: `State machine transition rejected: ${(err as Error).message}`, type: 'error' });
     } finally {
       setTransitionLoading(false);
+    }
+  };
+
+  // Disruption Scenario B Execution
+  const handleSimulateDisruptionB = async () => {
+    setDisruptionLoading(true);
+    setDisruptionResult(null);
+    try {
+      const res = await fetchWithAuth('/work-orders/reassign-disruption', {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: 'Sudden high fever & medical leave reported during active shift',
+        }),
+      });
+      setDisruptionResult(res);
+      await loadData();
+    } catch (err) {
+      alert(`Disruption simulation failed: ${(err as Error).message}`);
+    } finally {
+      setDisruptionLoading(false);
     }
   };
 
@@ -149,296 +211,346 @@ export default function WorkOrdersPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <RoleGuard pageName="Technician Dispatch Board">
+      <div className="max-w-7xl mx-auto space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-white/[0.06]">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-white/[0.08]">
         <div>
-          <div className="inline-flex items-center space-x-2 px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 text-xs font-medium text-blue-400 mb-2">
-            <Cpu className="w-3.5 h-3.5" />
-            <span>Deterministic Allocation & State Machine</span>
+          <div className="inline-flex items-center space-x-2 px-2.5 py-1 rounded-md bg-[#BFF549]/10 border border-[#BFF549]/30 text-xs font-semibold text-[#BFF549] mb-2">
+            <Wrench className="w-3.5 h-3.5" />
+            <span>Field Dispatch & Skill Allocation</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-white tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Work Order Operations
           </h1>
-          <p className="text-sm text-zinc-400 mt-1 max-w-2xl leading-relaxed">
-            Multi-factor technician matching with explainable scoring (certifications, proximity, shift workload) and strict lifecycle transitions.
+          <p className="text-sm text-neutral-400 mt-1 max-w-2xl leading-relaxed">
+            Multi-factor technician matching with explainable scoring (certifications, shifts, active loads) and automated reassignment when conditions change.
           </p>
         </div>
 
-        <button
-          onClick={loadWorkOrders}
-          disabled={loading}
-          className="p-2 px-3 bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-zinc-300 hover:text-white rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors self-start sm:self-auto"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Sync Pipeline</span>
-        </button>
+        <div className="flex items-center space-x-2 self-start sm:self-auto">
+          <div className="p-1 rounded-xl bg-[#1A1A1A] border border-white/[0.08] shadow-glaido-card flex items-center space-x-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab('orders')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                activeTab === 'orders' 
+                  ? 'bg-[#BFF549] text-black shadow-glaido-button' 
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Work Orders ({workOrders.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('roster')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                activeTab === 'roster' 
+                  ? 'bg-[#BFF549] text-black shadow-glaido-button' 
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Staff Skills & Shifts
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={loadData}
+            disabled={loading}
+            className="p-2 px-3 bg-[#1A1A1A] hover:bg-[#242424] border border-white/[0.08] text-neutral-300 hover:text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#BFF549]' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Work Order Queue */}
-        <div className="lg:col-span-5 space-y-2.5">
-          {loading && workOrders.length === 0 ? (
-            <div className="p-12 text-center text-zinc-500 text-xs">Loading work order queue...</div>
-          ) : workOrders.length === 0 ? (
-            <div className="p-12 text-center text-zinc-500 text-xs card-glass rounded-2xl">
-              No active work orders in the queue.
+      {/* DISRUPTION SCENARIO B BANNER */}
+      <div className="bg-[#1A1A1A] border border-[#FF8A1F]/30 p-5 rounded-2xl shadow-glaido-card space-y-3 card-sheen">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start space-x-3.5">
+            <div className="p-2.5 rounded-xl bg-[#FF8A1F]/10 border border-[#FF8A1F]/30 text-[#FF8A1F] shrink-0">
+              <UserX className="w-5 h-5" />
             </div>
-          ) : (
-            workOrders.map((wo) => {
-              const isSelected = selectedWO?.id === wo.id;
-              const isCompleted = wo.status === 'completed';
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-sm font-bold text-white">Disruption Scenario B: Technician Unavailable / Sickness</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#FF8A1F]/10 text-[#FF8A1F] border border-[#FF8A1F]/30">
+                  Automated Reassignment
+                </span>
+              </div>
+              <p className="text-xs text-neutral-400 mt-1 max-w-3xl leading-relaxed">
+                Simulate assigned Technician Rajesh reporting sick mid-shift. The system identifies active tickets, re-evaluates candidate certifications and active loads, and deterministically reassigns to Technician Ananya Verma.
+              </p>
+            </div>
+          </div>
 
-              return (
-                <div
-                  key={wo.id}
-                  onClick={() => setSelectedWO(wo)}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-zinc-900 border-blue-500/60 shadow-lg ring-1 ring-blue-500/30'
-                      : 'bg-zinc-900/40 border-white/[0.06] hover:border-white/[0.12] hover:bg-zinc-900/70'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-mono text-xs font-semibold text-zinc-100">
-                          {wo.work_order_number}
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                          {wo.priority}
-                        </span>
-                      </div>
-                      <h4 className="text-xs font-medium text-zinc-200 mt-1.5 truncate">
-                        {wo.title}
-                      </h4>
-                    </div>
-
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded capitalize whitespace-nowrap ${
-                      isCompleted
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                    }`}>
-                      {wo.status.replace('_', ' ')}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-500 border-t border-white/[0.04] pt-2">
-                    <span className="capitalize text-zinc-400">{wo.category} trade</span>
-                    <span className="text-zinc-300 font-medium">
-                      {wo.assigned_technician_name ? `${wo.assigned_technician_name}` : 'Unassigned'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })
-          )}
+          <button
+            type="button"
+            onClick={handleSimulateDisruptionB}
+            disabled={disruptionLoading}
+            className="px-4 py-2.5 bg-[#FF8A1F] hover:bg-[#E57A18] text-black font-bold rounded-xl text-xs flex items-center space-x-2 shrink-0 transition-all shadow-md cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${disruptionLoading ? 'animate-spin' : ''}`} />
+            <span>Simulate Technician Sickness</span>
+          </button>
         </div>
 
-        {/* Right Column: Work Order Inspector & Actions */}
-        <div className="lg:col-span-7">
-          {selectedWO ? (
-            <div className="card-glass p-6 rounded-2xl space-y-6">
-              {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-white/[0.06] pb-4">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-mono text-base font-semibold text-blue-400">
-                      {selectedWO.work_order_number}
-                    </span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      {selectedWO.priority} Priority
-                    </span>
-                  </div>
-                  <h2 className="text-lg font-semibold text-white mt-1.5 tracking-tight">
-                    {selectedWO.title}
-                  </h2>
-                </div>
+        {/* Disruption Result Box */}
+        {disruptionResult && (
+          <div className="p-4 rounded-xl bg-[#0D0D0D] border border-[#FF8A1F]/40 text-xs space-y-2 animate-fade-in">
+            <div className="flex items-center justify-between text-[#FF8A1F] font-bold">
+              <span>Disruption Handled: {disruptionResult.reassigned_work_orders?.length || 0} Work Order(s) Reassigned</span>
+              <span className="text-[10px] font-mono text-neutral-400">Deterministic Reallocation</span>
+            </div>
+            {disruptionResult.reassigned_work_orders?.map((r: any, idx: number) => (
+              <div key={idx} className="p-2.5 rounded-lg bg-[#1A1A1A] border border-white/[0.08] text-[11px] space-y-1">
+                <div>Work Order: <span className="font-bold text-white">{r.work_order_number}</span></div>
+                <div>New Assignee: <span className="font-bold text-[#BFF549]">{r.new_technician}</span> ({r.new_technician_email})</div>
+                <div className="text-neutral-400">Match Justification: <span className="text-neutral-200">{r.reason}</span></div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-                <div className="text-right flex-shrink-0">
-                  <span className="text-[11px] text-zinc-500 block">Lifecycle State</span>
-                  <span className="text-xs font-semibold capitalize font-mono px-2.5 py-1 rounded bg-zinc-950/80 text-amber-300 border border-white/[0.08] inline-block mt-1">
+      {actionMessage && (
+        <div className={`p-3.5 rounded-xl text-xs font-medium border flex items-center space-x-2 ${
+          actionMessage.type === 'success' 
+            ? 'bg-[#BFF549]/10 text-[#BFF549] border-[#BFF549]/25' 
+            : 'bg-[#FF2B3A]/10 text-[#FF2B3A] border-[#FF2B3A]/25'
+        }`}>
+          {actionMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-[#BFF549]" /> : <AlertCircle className="w-4 h-4 text-[#FF2B3A]" />}
+          <span>{actionMessage.text}</span>
+        </div>
+      )}
+
+      {/* TAB 1: WORK ORDERS LIST & DETAIL VIEW */}
+      {activeTab === 'orders' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Work Orders List (5 Cols) */}
+          <div className="lg:col-span-5 space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-bold text-white uppercase tracking-wider">Active Dispatch Queue</span>
+              <span className="text-xs text-neutral-400">{workOrders.length} orders total</span>
+            </div>
+
+            <div className="space-y-2.5 max-h-[680px] overflow-y-auto pr-1">
+              {workOrders.map((wo) => {
+                const isSelected = selectedWO?.id === wo.id;
+                const isBlocked = wo.status === 'awaiting_parts';
+                return (
+                  <div
+                    key={wo.id}
+                    onClick={() => setSelectedWO(wo)}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer text-left card-sheen ${
+                      isSelected
+                        ? 'bg-[#1A1A1A] border-[#BFF549] shadow-glaido-card'
+                        : 'bg-[#1A1A1A] border-white/[0.08] hover:border-white/[0.18]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-mono text-xs font-bold text-white">{wo.work_order_number}</span>
+                      <div className="flex items-center space-x-1.5">
+                        {isBlocked && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF2B3A]/10 text-[#FF2B3A] border border-[#FF2B3A]/30 flex items-center space-x-1">
+                            <Package className="w-3 h-3" />
+                            <span>BLOCKED (Parts)</span>
+                          </span>
+                        )}
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#242424] text-neutral-300 border border-white/[0.08]">
+                          {wo.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <h4 className="text-xs font-semibold text-white line-clamp-1">{wo.title}</h4>
+                    <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">{wo.description}</p>
+
+                    <div className="flex items-center justify-between text-[11px] text-neutral-400 mt-3 pt-2.5 border-t border-white/[0.06]">
+                      <span className="capitalize">{wo.category}</span>
+                      <span className="font-medium text-neutral-200">
+                        {wo.assigned_technician?.full_name || 'Unassigned'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Work Order Detail & State Machine Controls (7 Cols) */}
+          <div className="lg:col-span-7 space-y-4">
+            {selectedWO ? (
+              <div className="bg-[#1A1A1A] border border-white/[0.08] rounded-2xl p-6 shadow-glaido-card space-y-5 card-sheen">
+                <div className="flex items-start justify-between border-b border-white/[0.06] pb-4">
+                  <div>
+                    <span className="font-mono text-xs font-bold text-[#BFF549] block">{selectedWO.work_order_number}</span>
+                    <h2 className="text-base font-bold text-white mt-0.5">{selectedWO.title}</h2>
+                    <p className="text-xs text-neutral-400 mt-1 leading-relaxed">{selectedWO.description}</p>
+                  </div>
+                  <span className="text-xs font-bold uppercase px-3 py-1 rounded-full bg-[#BFF549]/10 text-[#BFF549] border border-[#BFF549]/30">
                     {selectedWO.status.replace('_', ' ')}
                   </span>
                 </div>
-              </div>
 
-              {actionMessage && (
-                <div className={`p-3 rounded-lg text-xs flex items-center space-x-2 ${
-                  actionMessage.type === 'success' 
-                    ? 'bg-emerald-950/30 border border-emerald-500/20 text-emerald-300' 
-                    : 'bg-rose-950/30 border border-rose-500/20 text-rose-300'
-                }`}>
-                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                  <span>{actionMessage.text}</span>
-                </div>
-              )}
-
-              {/* Visual Lifecycle Stepper */}
-              <div className="space-y-2">
-                <span className="text-xs font-medium text-zinc-400 block">Workflow State Pipeline</span>
-                <div className="grid grid-cols-6 gap-1 bg-zinc-950/60 p-2 rounded-xl border border-white/[0.06]">
-                  {lifecycleStages.map((stage, idx) => {
-                    const currentIndex = getStageIndex(selectedWO.status);
-                    const isPast = idx < currentIndex;
-                    const isCurrent = idx === currentIndex;
-
-                    return (
-                      <div 
-                        key={stage.key}
-                        className={`text-center py-2 px-1 rounded-lg text-[10px] font-medium transition-all ${
-                          isCurrent
-                            ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40 font-semibold'
-                            : isPast
-                            ? 'bg-zinc-900/80 text-zinc-400'
-                            : 'text-zinc-600'
-                        }`}
+                {/* State Machine Transition Buttons */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-white block">State Machine Progression:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {getValidTransitions(selectedWO.status).map((targetStatus) => (
+                      <button
+                        key={targetStatus}
+                        type="button"
+                        onClick={() => handleTransition(targetStatus)}
+                        disabled={transitionLoading}
+                        className="px-3.5 py-1.5 rounded-xl bg-[#BFF549] hover:bg-[#8CC21F] text-black text-xs font-bold shadow-glaido-button transition-all flex items-center space-x-1.5 cursor-pointer"
                       >
-                        <div className="flex items-center justify-center mb-1">
-                          {isPast ? (
-                            <Check className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <span className={`w-1.5 h-1.5 rounded-full ${isCurrent ? 'bg-blue-400 animate-pulse' : 'bg-zinc-700'}`}></span>
-                          )}
-                        </div>
-                        <span className="truncate block">{stage.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Scope of Work */}
-              <div className="space-y-1.5">
-                <span className="text-xs font-medium text-zinc-400">
-                  Scope of Work & Diagnostics
-                </span>
-                <p className="text-xs text-zinc-200 bg-zinc-950/60 p-3.5 rounded-xl border border-white/[0.06] leading-relaxed">
-                  {selectedWO.description}
-                </p>
-              </div>
-
-              {/* Technician Allocation / Explainable Match Engine */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-300 flex items-center space-x-1.5">
-                    <Cpu className="w-4 h-4 text-emerald-400" />
-                    <span>Technician Allocation Engine</span>
-                  </span>
-                  <span className="text-[11px] font-mono text-zinc-500">Multi-Factor Algorithm</span>
-                </div>
-
-                {selectedWO.assigned_technician_name ? (
-                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-white/[0.08] flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-semibold">
-                        <UserCheck className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-white">
-                          {selectedWO.assigned_technician_name}
-                        </div>
-                        <div className="text-[11px] text-zinc-400">
-                          {selectedWO.assigned_technician_email || 'Certified Field Technician'}
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
-                      Active Dispatch
-                    </span>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {candidatesLoading ? (
-                      <div className="p-6 text-center text-xs text-zinc-400 flex items-center justify-center space-x-2">
-                        <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
-                        <span>Evaluating certifications, proximity, and queue load...</span>
-                      </div>
-                    ) : candidates.length === 0 ? (
-                      <div className="p-4 bg-zinc-950/60 rounded-xl text-xs text-zinc-400 border border-white/[0.06]">
-                        No certified candidates currently available in active shift.
-                      </div>
-                    ) : (
-                      candidates.map((cand) => (
-                        <div
-                          key={cand.id}
-                          className="p-3.5 rounded-xl bg-zinc-950/70 border border-white/[0.06] hover:border-white/[0.12] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition-all"
-                        >
-                          <div>
-                            <div className="flex items-center space-x-2">
-                              <span className="font-semibold text-white text-xs">{cand.name}</span>
-                              <span className="text-emerald-400 font-mono text-[10px] bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                Match Score: {(cand.score * 100).toFixed(0)}%
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-zinc-400 mt-1 flex items-center space-x-3">
-                              <span>Queue: <strong className="text-zinc-200">{cand.active_work_orders}</strong> active</span>
-                              <span className="text-zinc-600">•</span>
-                              <span>Shift: <strong className="text-zinc-200 capitalize">{cand.shift}</strong></span>
-                            </div>
-                            <div className="text-[11px] text-blue-400 mt-1 font-medium">
-                              Certifications: {cand.certifications.join(', ')}
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => handleAssign(cand.id)}
-                            disabled={transitionLoading}
-                            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-xs font-medium flex items-center space-x-1.5 shadow-sm transition-colors whitespace-nowrap self-start sm:self-auto"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            <span>Dispatch</span>
-                          </button>
-                        </div>
-                      ))
+                        <CheckCircle2 className="w-3.5 h-3.5 text-black" />
+                        <span>Advance to {targetStatus.replace('_', ' ').toUpperCase()}</span>
+                      </button>
+                    ))}
+                    {selectedWO.status === 'in_progress' && (
+                      <button
+                        type="button"
+                        onClick={() => handleTransition('awaiting_parts')}
+                        disabled={transitionLoading}
+                        className="px-3.5 py-1.5 rounded-xl bg-[#FF8A1F]/10 hover:bg-[#FF8A1F]/20 text-[#FF8A1F] border border-[#FF8A1F]/40 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        <Package className="w-3.5 h-3.5" />
+                        <span>Flag as Blocked (Parts Shortage)</span>
+                      </button>
                     )}
                   </div>
+                </div>
+
+                {/* Technician Assignment Panel (if pending) */}
+                {(!selectedWO.assigned_technician_id || selectedWO.status === 'pending') && (
+                  <div className="p-4 rounded-xl bg-[#0D0D0D] border border-white/[0.08] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-[#BFF549]" />
+                        <span>AI Explainable Staff Allocation</span>
+                      </span>
+                      <span className="text-[10px] text-neutral-400">Ranked by Skills & Workload</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {candidates.map((cand) => (
+                        <div key={cand.user_id} className="p-3 rounded-lg bg-[#1A1A1A] border border-white/[0.08] flex items-center justify-between text-xs">
+                          <div>
+                            <div className="font-bold text-white">{cand.full_name}</div>
+                            <div className="text-[10px] text-neutral-400">{cand.recommendation_reason}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAssign(cand.user_id)}
+                            className="px-3 py-1 bg-[#BFF549] hover:bg-[#8CC21F] text-black font-bold rounded-lg text-xs cursor-pointer"
+                          >
+                            Dispatch
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
-              </div>
 
-              {/* State Machine Transition Actions */}
-              <div className="border-t border-white/[0.06] pt-5 space-y-3">
-                <span className="text-xs font-semibold text-zinc-300 block">
-                  Deterministic Lifecycle Execution
-                </span>
+                {/* Resolution Notes & Log */}
+                <div className="space-y-3 pt-2 border-t border-white/[0.06]">
+                  <span className="text-xs font-bold text-white block">Field Investigation History:</span>
+                  <div className="bg-[#0D0D0D] p-3 rounded-xl border border-white/[0.08] text-xs text-neutral-300 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                    {selectedWO.resolution_notes || 'No field investigation notes logged yet.'}
+                  </div>
 
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Transition notes or technician field sign-off remark..."
-                    className="flex-1 bg-zinc-950/70 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500/60"
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {getValidTransitions(selectedWO.status).map((targetStatus) => (
+                  <form onSubmit={handleAddNote} className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Add technician field note (e.g. replaced circuit breaker, tested continuity)..."
+                      className="flex-1 bg-[#0D0D0D] border border-white/[0.10] rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus-ring"
+                    />
                     <button
-                      key={targetStatus}
-                      onClick={() => handleTransition(targetStatus)}
-                      disabled={transitionLoading}
-                      className="px-3.5 py-2 bg-zinc-900 hover:bg-blue-600 hover:text-white border border-white/[0.08] text-zinc-200 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-sm"
+                      type="submit"
+                      disabled={transitionLoading || !notes.trim()}
+                      className="px-3.5 py-2 bg-[#242424] hover:bg-[#2F2F2F] text-white border border-white/[0.08] rounded-xl text-xs font-semibold cursor-pointer"
                     >
-                      <ArrowRight className="w-3.5 h-3.5" />
-                      <span>Advance to &quot;{targetStatus.replace('_', ' ')}&quot;</span>
+                      Add Note
                     </button>
-                  ))}
-                  {getValidTransitions(selectedWO.status).length === 0 && (
-                    <span className="text-xs text-zinc-500 italic">
-                      Terminal state reached ({selectedWO.status}). Strict state machine forbids further mutation.
-                    </span>
-                  )}
+                  </form>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="p-16 text-center text-zinc-500 card-glass rounded-2xl text-xs">
-              Select a work order from the queue to view dispatch options and lifecycle state transitions.
-            </div>
-          )}
+            ) : (
+              <div className="p-12 text-center text-neutral-500 text-xs bg-[#1A1A1A] rounded-2xl border border-white/[0.08]">
+                Select a work order from the dispatch queue.
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* TAB 2: STAFF SKILLS & SHIFT ROSTER */}
+      {activeTab === 'roster' && (
+        <div className="bg-[#1A1A1A] border border-white/[0.08] rounded-2xl p-6 shadow-glaido-card space-y-4 card-sheen">
+          <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center space-x-2">
+                <Users className="w-4 h-4 text-[#BFF549]" />
+                <span>Campus Maintenance Staff Roster & Skill Certifications</span>
+              </h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                Real-time visibility into technician specialty certificates, active shift windows, and active ticket workloads.
+              </p>
+            </div>
+            <span className="text-[10px] font-mono text-[#BFF549] bg-[#BFF549]/10 px-2 py-0.5 rounded-full border border-[#BFF549]/30">
+              Shift Calendar Synchronized
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {staffRoster.map((s, idx) => (
+              <div key={idx} className="bg-[#0D0D0D] p-4 rounded-xl border border-white/[0.08] space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-xs font-bold text-white">{s.full_name}</h3>
+                    <span className="text-[10px] text-neutral-400 block">{s.title}</span>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    s.is_on_duty 
+                      ? 'bg-[#BFF549]/10 text-[#BFF549] border-[#BFF549]/30' 
+                      : 'bg-[#FF2B3A]/10 text-[#FF2B3A] border-[#FF2B3A]/30'
+                  }`}>
+                    {s.is_on_duty ? 'ON DUTY' : 'OFF DUTY'}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between text-neutral-400">
+                    <span>Shift Window:</span>
+                    <span className="font-mono text-neutral-200">{s.shift}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-neutral-400">
+                    <span>Active Workload:</span>
+                    <span className="font-bold text-[#BFF549]">{s.current_workload} tickets</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/[0.06]">
+                  <span className="text-[10px] font-bold text-neutral-400 block mb-1.5">Trade Certifications:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {s.skills?.map((sk: string, i: number) => (
+                      <span key={i} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#BFF549]/10 text-[#BFF549] border border-[#BFF549]/20">
+                        {sk}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
+    </RoleGuard>
   );
 }

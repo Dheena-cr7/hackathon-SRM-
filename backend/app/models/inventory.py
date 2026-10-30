@@ -32,7 +32,7 @@ class PartsReservation(Base):
     __tablename__ = "parts_reservations"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    work_order_id = Column(String(36), ForeignKey("work_orders.id", ondelete="CASCADE"), nullable=False)
+    work_order_id = Column(String(36), ForeignKey("work_orders.id", ondelete="CASCADE"), nullable=True)
     item_id = Column(String(36), ForeignKey("inventory_items.id"), nullable=False)
     quantity = Column(Integer, nullable=False)
     status = Column(String(30), default="reserved", nullable=False)  # reserved, consumed, released

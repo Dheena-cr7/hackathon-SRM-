@@ -36,7 +36,7 @@ class Settings(BaseModel):
 
     # Campus & GeoJSON
     CAMPUS_GEOJSON_PATH: str = os.getenv("CAMPUS_GEOJSON_PATH", str(DATA_DIR / "campus.geojson"))
-    DEFAULT_CAMPUS_NAME: str = os.getenv("DEFAULT_CAMPUS_NAME", "SRM Campus")
+    DEFAULT_CAMPUS_NAME: str = os.getenv("DEFAULT_CAMPUS_NAME", "Sri Krishna Campus")
 
     # Layer 1 AI Config
     AI_LAYER1_ENABLED: bool = True
