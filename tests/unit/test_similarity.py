@@ -61,3 +61,4 @@ def test_incident_similarity_engine_duplicate_detection():
     assert top_match["incident_number"] == "INC-2026-0001"
     assert top_match["similarity_score"] > 0.35
     assert top_match["is_duplicate_candidate"] is True
+
