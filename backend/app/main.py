@@ -50,6 +50,7 @@ app.include_router(analytics.router, prefix=API_V1_PREFIX)
 app.include_router(ws.router, prefix=API_V1_PREFIX)
 
 @app.get("/health", tags=["Health"])
+@app.get("/api/v1/health", tags=["Health"])
 async def health_check():
     return {
         "status": "operational",
