@@ -154,9 +154,9 @@ export default function CommandCenterPage() {
       </div>
 
       {/* Main Interactive Canvas & Inspector Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className={`grid grid-cols-1 ${viewMode === '3d' ? 'lg:grid-cols-1' : 'lg:grid-cols-12'} gap-6 items-start`}>
         {/* Left: The 3D Scene or 2D Fallback */}
-        <div className="lg:col-span-8 space-y-3">
+        <div className={`${viewMode === '3d' ? 'w-full' : 'lg:col-span-8'} space-y-3`}>
           <div className="rounded-2xl overflow-hidden border border-white/[0.08] relative bg-[#0D0D0D] shadow-glaido-card">
             {viewMode === '3d' ? (
               <CampusScene
@@ -202,8 +202,9 @@ export default function CommandCenterPage() {
           </div>
         </div>
 
-        {/* Right: Facility Inspector Drawer */}
-        <div className="lg:col-span-4">
+        {/* Right: Facility Inspector Drawer (Visible in 2D Blueprint mode) */}
+        {viewMode !== '3d' && (
+          <div className="lg:col-span-4">
           {selectedBuilding ? (
             <div className="bg-[#1A1A1A] rounded-2xl border border-white/[0.08] p-5 space-y-5 shadow-glaido-card card-sheen">
               {/* Header */}
@@ -448,6 +449,7 @@ export default function CommandCenterPage() {
             </div>
           )}
         </div>
+      )}
       </div>
     </div>
     </RoleGuard>
