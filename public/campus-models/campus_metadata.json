@@ -1,0 +1,803 @@
+{
+  "version": "2.1.0",
+  "generated_at": "2026-10-30T22:18:40.281Z",
+  "spatial_reference": {
+    "srs": "Local Cartographic Metres",
+    "axis_convention": "Right-Handed, Y-Up (X: East-West, Z: North-South, Y: Elevation)",
+    "unit": "metres",
+    "campus_bounds": {
+      "minX": -90,
+      "maxX": 90,
+      "minZ": -90,
+      "maxZ": 90,
+      "heightMeters": 26
+    }
+  },
+  "camera_presets": {
+    "campus_aerial": {
+      "position": [
+        0,
+        95,
+        110
+      ],
+      "target": [
+        0,
+        4,
+        0
+      ],
+      "fov": 44
+    },
+    "academic_block": {
+      "position": [
+        15,
+        28,
+        38
+      ],
+      "target": [
+        -16,
+        6,
+        2
+      ],
+      "fov": 40
+    },
+    "innovation_block": {
+      "position": [
+        85,
+        32,
+        -25
+      ],
+      "target": [
+        58,
+        6,
+        -52
+      ],
+      "fov": 40
+    },
+    "engineering_block": {
+      "position": [
+        10,
+        30,
+        -25
+      ],
+      "target": [
+        -20,
+        6,
+        -54
+      ],
+      "fov": 40
+    },
+    "library_block": {
+      "position": [
+        88,
+        28,
+        28
+      ],
+      "target": [
+        58,
+        6,
+        2
+      ],
+      "fov": 40
+    },
+    "auditorium_block": {
+      "position": [
+        50,
+        26,
+        80
+      ],
+      "target": [
+        20,
+        6,
+        54
+      ],
+      "fov": 40
+    },
+    "academic_cutaway": {
+      "position": [
+        18,
+        18,
+        22
+      ],
+      "target": [
+        0,
+        5,
+        0
+      ],
+      "fov": 38
+    },
+    "floor_0": {
+      "position": [
+        0,
+        20,
+        22
+      ],
+      "target": [
+        0,
+        0.5,
+        0
+      ],
+      "fov": 38
+    },
+    "floor_1": {
+      "position": [
+        0,
+        20,
+        22
+      ],
+      "target": [
+        0,
+        0.5,
+        0
+      ],
+      "fov": 38
+    },
+    "floor_2": {
+      "position": [
+        0,
+        20,
+        22
+      ],
+      "target": [
+        0,
+        0.5,
+        0
+      ],
+      "fov": 38
+    }
+  },
+  "zones": [
+    {
+      "id": "AI",
+      "name": "AI & Neural Computing Cluster",
+      "color": "#06B6D4",
+      "description": "Deep learning GPU racks, edge robotics testbeds, and computer science research labs."
+    },
+    {
+      "id": "LECTURE",
+      "name": "Academic & Lecture Theatres",
+      "color": "#3B82F6",
+      "description": "Tiered auditorium halls, multimedia presentation screens, and active teaching classrooms."
+    },
+    {
+      "id": "COLLAB",
+      "name": "Collaboration & Innovation Commons",
+      "color": "#10B981",
+      "description": "Agile project workspaces, mobile ideation pods, and study commons."
+    },
+    {
+      "id": "EXECUTIVE",
+      "name": "Executive Boardroom & Faculty Suites",
+      "color": "#A855F7",
+      "description": "High-level administrative consultation, dean's conference room, and senate chamber."
+    },
+    {
+      "id": "INCIDENT",
+      "name": "Physical Plant & Disruption Zone",
+      "color": "#EF4444",
+      "description": "Electrical distribution panels, HVAC ducting, and maintenance work order area."
+    }
+  ],
+  "buildings": [
+    {
+      "id": "academic",
+      "name": "Academic Complex & AI Computing Center",
+      "code": "ACAD-01",
+      "center": [
+        -16,
+        0,
+        2
+      ],
+      "bounds": {
+        "width": 32,
+        "height": 16,
+        "depth": 26
+      },
+      "has_detailed_interior": true,
+      "floors": [
+        "0",
+        "1",
+        "2"
+      ],
+      "model_url": "/campus-models/academic_building_cutaway.glb",
+      "departments": [
+        "Artificial Intelligence",
+        "Computer Science",
+        "Data Analytics"
+      ],
+      "status": "OPERATIONAL",
+      "primary_zone": "AI & Academic",
+      "notice": null
+    },
+    {
+      "id": "innovation",
+      "name": "AI & Innovation Research Hub",
+      "code": "INN-01",
+      "center": [
+        58,
+        0,
+        -52
+      ],
+      "bounds": {
+        "width": 30,
+        "height": 18,
+        "depth": 22
+      },
+      "has_detailed_interior": false,
+      "floors": [
+        "0",
+        "1",
+        "2"
+      ],
+      "model_url": null,
+      "departments": [
+        "Neural Computing",
+        "Venture Incubation"
+      ],
+      "status": "OPERATIONAL",
+      "primary_zone": "AI Computing",
+      "notice": "Detailed interior not yet modelled. Architectural survey scheduled."
+    },
+    {
+      "id": "engineering",
+      "name": "Engineering & Robotics Hall",
+      "code": "ENG-01",
+      "center": [
+        -20,
+        0,
+        -54
+      ],
+      "bounds": {
+        "width": 34,
+        "height": 18,
+        "depth": 22
+      },
+      "has_detailed_interior": false,
+      "floors": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "model_url": null,
+      "departments": [
+        "Robotics & Mechatronics",
+        "Electrical Engineering"
+      ],
+      "status": "OPERATIONAL",
+      "primary_zone": "Engineering",
+      "notice": "Detailed interior not yet modelled. Architectural survey scheduled."
+    },
+    {
+      "id": "library",
+      "name": "Main University Library",
+      "code": "LIB-01",
+      "center": [
+        58,
+        0,
+        2
+      ],
+      "bounds": {
+        "width": 28,
+        "height": 16,
+        "depth": 28
+      },
+      "has_detailed_interior": false,
+      "floors": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "model_url": null,
+      "departments": [
+        "Digital Archives",
+        "Research Library"
+      ],
+      "status": "OPERATIONAL",
+      "primary_zone": "Collaboration",
+      "notice": "Detailed interior not yet modelled. Architectural survey scheduled."
+    },
+    {
+      "id": "auditorium",
+      "name": "Campus Grand Auditorium",
+      "code": "AUD-01",
+      "center": [
+        20,
+        0,
+        54
+      ],
+      "bounds": {
+        "width": 32,
+        "height": 16,
+        "depth": 24
+      },
+      "has_detailed_interior": false,
+      "floors": [
+        "0",
+        "1"
+      ],
+      "model_url": null,
+      "departments": [
+        "Performing Arts",
+        "Global Symposia"
+      ],
+      "status": "OPERATIONAL",
+      "primary_zone": "Lecture",
+      "notice": "Detailed interior not yet modelled. Architectural survey scheduled."
+    },
+    {
+      "id": "administration",
+      "name": "Administration Building",
+      "code": "ADM-01",
+      "center": [
+        -62,
+        0,
+        -52
+      ],
+      "bounds": {
+        "width": 26,
+        "height": 13,
+        "depth": 24
+      },
+      "has_detailed_interior": false,
+      "floors": [
+        "0",
+        "1",
+        "2"
+      ],
+      "model_url": null,
+      "departments": [
+        "Registrar",
+        "University Senate"
+      ],
+      "status": "OPERATIONAL",
+      "primary_zone": "Executive",
+      "notice": "Detailed interior not yet modelled. Architectural survey scheduled."
+    },
+    {
+      "id": "sports",
+      "name": "Indoor Sports Arena",
+      "code": "SPT-01",
+      "center": [
+        -62,
+        0,
+        52
+      ],
+      "bounds": {
+        "width": 36,
+        "height": 15,
+        "depth": 26
+      },
+      "has_detailed_interior": false,
+      "floors": [
+        "0",
+        "1"
+      ],
+      "model_url": null,
+      "departments": [
+        "Athletics",
+        "Kinesiology"
+      ],
+      "status": "OPERATIONAL",
+      "primary_zone": "Athletics",
+      "notice": "Detailed interior not yet modelled. Architectural survey scheduled."
+    }
+  ],
+  "rooms": [
+    {
+      "id": "ROOM_ACAD_001",
+      "mesh_name": "ROOM_ACAD_001",
+      "building_id": "academic",
+      "floor": "0",
+      "name": "Welcome Commons & Lobby",
+      "type": "COLLAB",
+      "zone": "COLLAB",
+      "capacity": 50,
+      "current_occupancy": 14,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 21.8,
+      "disrupted": false,
+      "equipment": [
+        "Interactive Campus Kiosk",
+        "Security Turnstiles",
+        "Digital Twin Status Bar"
+      ],
+      "camera_focus": [
+        -8.5,
+        2,
+        6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_002",
+      "mesh_name": "ROOM_ACAD_002",
+      "building_id": "academic",
+      "floor": "0",
+      "name": "Auditorium Hall A",
+      "type": "LECTURE",
+      "zone": "LECTURE",
+      "capacity": 120,
+      "current_occupancy": 0,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 21.2,
+      "disrupted": false,
+      "equipment": [
+        "Laser Cinema Projector",
+        "Concert PA Array",
+        "Motorized Tiered Screen"
+      ],
+      "camera_focus": [
+        -8.5,
+        2,
+        -6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_003",
+      "mesh_name": "ROOM_ACAD_003",
+      "building_id": "academic",
+      "floor": "0",
+      "name": "AI Study Commons",
+      "type": "AI",
+      "zone": "AI",
+      "capacity": 35,
+      "current_occupancy": 24,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 21.9,
+      "disrupted": false,
+      "equipment": [
+        "Edge AI Dev Boards",
+        "High-Power Laptop Docks",
+        "Collaborative Smartboards"
+      ],
+      "camera_focus": [
+        8.5,
+        2,
+        -6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_004",
+      "mesh_name": "ROOM_ACAD_004",
+      "building_id": "academic",
+      "floor": "0",
+      "name": "Faculty Office Suites",
+      "type": "EXECUTIVE",
+      "zone": "EXECUTIVE",
+      "capacity": 20,
+      "current_occupancy": 8,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 21.5,
+      "disrupted": false,
+      "equipment": [
+        "VoIP Conference Hubs",
+        "Secure Filing Storage"
+      ],
+      "camera_focus": [
+        8.5,
+        2,
+        6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_101",
+      "mesh_name": "ROOM_ACAD_101",
+      "building_id": "academic",
+      "floor": "1",
+      "name": "AI Deep Learning Supercluster Lab",
+      "type": "AI",
+      "zone": "AI",
+      "capacity": 30,
+      "current_occupancy": 28,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 20.2,
+      "disrupted": false,
+      "equipment": [
+        "4x NVIDIA H100 GPU Racks",
+        "Liquid Cooling Feed",
+        "30x Dual-Screen Workstations"
+      ],
+      "camera_focus": [
+        -8.5,
+        6,
+        -6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_102",
+      "mesh_name": "ROOM_ACAD_102",
+      "building_id": "academic",
+      "floor": "1",
+      "name": "Seminar Hall 102",
+      "type": "LECTURE",
+      "zone": "LECTURE",
+      "capacity": 45,
+      "current_occupancy": 0,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 21.4,
+      "disrupted": false,
+      "equipment": [
+        "Dual 85\" UHD Displays",
+        "Ceiling Beamforming Mic Array"
+      ],
+      "camera_focus": [
+        8.5,
+        6,
+        -6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_103",
+      "mesh_name": "ROOM_ACAD_103",
+      "building_id": "academic",
+      "floor": "1",
+      "name": "Collaboration Innovation Lounge",
+      "type": "COLLAB",
+      "zone": "COLLAB",
+      "capacity": 25,
+      "current_occupancy": 16,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 22,
+      "disrupted": false,
+      "equipment": [
+        "Mobile Ideation Glassboards",
+        "Acoustic Seating Pods"
+      ],
+      "camera_focus": [
+        -8.5,
+        6,
+        6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_104",
+      "mesh_name": "ROOM_ACAD_104",
+      "building_id": "academic",
+      "floor": "1",
+      "name": "Robotics Prototyping Workshop",
+      "type": "AI",
+      "zone": "AI",
+      "capacity": 20,
+      "current_occupancy": 12,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 21.1,
+      "disrupted": false,
+      "equipment": [
+        "6-Axis Robot Arms",
+        "Soldering Ventilation",
+        "3D Printing Stations"
+      ],
+      "camera_focus": [
+        8.5,
+        6,
+        6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_201",
+      "mesh_name": "ROOM_ACAD_201",
+      "building_id": "academic",
+      "floor": "2",
+      "name": "Executive Boardroom",
+      "type": "EXECUTIVE",
+      "zone": "EXECUTIVE",
+      "capacity": 18,
+      "current_occupancy": 0,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 21,
+      "disrupted": false,
+      "equipment": [
+        "85\" Conference Bar",
+        "PTZ Tracking Cameras",
+        "Executive Table Power Rails"
+      ],
+      "camera_focus": [
+        -8.5,
+        10,
+        -6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_202",
+      "mesh_name": "ROOM_ACAD_202",
+      "building_id": "academic",
+      "floor": "2",
+      "name": "Neural Vision AI Lab",
+      "type": "AI",
+      "zone": "AI",
+      "capacity": 25,
+      "current_occupancy": 19,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 20.6,
+      "disrupted": false,
+      "equipment": [
+        "Stereo Depth Cameras",
+        "Edge Inference Boxes",
+        "FPGA Development Rigs"
+      ],
+      "camera_focus": [
+        -8.5,
+        10,
+        6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_203",
+      "mesh_name": "ROOM_ACAD_203",
+      "building_id": "academic",
+      "floor": "2",
+      "name": "Graduate Research Pod",
+      "type": "COLLAB",
+      "zone": "COLLAB",
+      "capacity": 15,
+      "current_occupancy": 6,
+      "power_status": "NORMAL",
+      "hvac_status": "NORMAL",
+      "temperature_c": 22.2,
+      "disrupted": false,
+      "equipment": [
+        "Quiet Pods",
+        "Ergonomic Standing Desks"
+      ],
+      "camera_focus": [
+        8.5,
+        10,
+        6.5
+      ]
+    },
+    {
+      "id": "ROOM_ACAD_204",
+      "mesh_name": "ROOM_ACAD_204",
+      "building_id": "academic",
+      "floor": "2",
+      "name": "Engineering Hall 204 (Disrupted Zone)",
+      "type": "INCIDENT",
+      "zone": "INCIDENT",
+      "capacity": 40,
+      "current_occupancy": 0,
+      "power_status": "OUTAGE",
+      "hvac_status": "DEGRADED",
+      "temperature_c": 24.6,
+      "disrupted": true,
+      "equipment": [
+        "Ceiling Cinema Projector (Offline)",
+        "Sub-Panel Breaker (Tripped)",
+        "HVAC Zone 4 Damper"
+      ],
+      "camera_focus": [
+        8.5,
+        10,
+        -6.5
+      ]
+    }
+  ],
+  "safety_assets": [
+    {
+      "id": "AST-FE-001",
+      "type": "fire_extinguisher",
+      "label": "CO2 Extinguisher #1",
+      "building_id": "academic",
+      "floor": "0",
+      "position": [
+        -1,
+        1.2,
+        12
+      ],
+      "status": "INSPECTED"
+    },
+    {
+      "id": "AST-FE-002",
+      "type": "fire_extinguisher",
+      "label": "Dry Powder Extinguisher #2",
+      "building_id": "academic",
+      "floor": "1",
+      "position": [
+        -1,
+        5.6,
+        12
+      ],
+      "status": "INSPECTED"
+    },
+    {
+      "id": "AST-FE-003",
+      "type": "fire_extinguisher",
+      "label": "Clean Agent Extinguisher (AI Lab)",
+      "building_id": "academic",
+      "floor": "1",
+      "position": [
+        -15,
+        5.6,
+        -1
+      ],
+      "status": "INSPECTED"
+    },
+    {
+      "id": "AST-FE-004",
+      "type": "fire_extinguisher",
+      "label": "Halon Fire Extinguisher (Rm 204)",
+      "building_id": "academic",
+      "floor": "2",
+      "position": [
+        15,
+        10,
+        -1
+      ],
+      "status": "WARNING_CHECK"
+    },
+    {
+      "id": "AST-AED-001",
+      "type": "aed",
+      "label": "Automated External Defibrillator (Lobby)",
+      "building_id": "academic",
+      "floor": "0",
+      "position": [
+        0,
+        1.4,
+        2
+      ],
+      "status": "OPERATIONAL"
+    },
+    {
+      "id": "AST-AED-002",
+      "type": "aed",
+      "label": "Automated External Defibrillator (Level 2)",
+      "building_id": "academic",
+      "floor": "2",
+      "position": [
+        0,
+        10.2,
+        2
+      ],
+      "status": "OPERATIONAL"
+    },
+    {
+      "id": "AST-SEC-001",
+      "type": "security_camera",
+      "label": "Entrance Dome Camera #1",
+      "building_id": "academic",
+      "floor": "0",
+      "position": [
+        -15,
+        3.4,
+        12
+      ],
+      "status": "ONLINE"
+    },
+    {
+      "id": "AST-SEC-002",
+      "type": "security_camera",
+      "label": "AI Supercluster Corridor PTZ",
+      "building_id": "academic",
+      "floor": "1",
+      "position": [
+        0,
+        7.8,
+        0
+      ],
+      "status": "ONLINE"
+    },
+    {
+      "id": "AST-SEC-003",
+      "type": "security_camera",
+      "label": "Executive Level Corridor PTZ",
+      "building_id": "academic",
+      "floor": "2",
+      "position": [
+        0,
+        12.2,
+        0
+      ],
+      "status": "ONLINE"
+    }
+  ]
+}
