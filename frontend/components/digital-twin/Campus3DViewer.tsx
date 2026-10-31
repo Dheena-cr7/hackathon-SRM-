@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { 
   Building2, Layers, Zap, Thermometer, AlertTriangle, 
   CheckCircle2, RefreshCw, Eye, Monitor, DollarSign, Activity,
   Search, Shield, Flame, Heart, MapPin, Navigation, ArrowRight,
   ChevronRight, ChevronLeft, Cpu, Server, Sparkles, Compass, Maximize2,
-  RotateCw, ArrowLeftRight, ShieldAlert, Calendar
+  RotateCw, ArrowLeftRight, ShieldAlert, Calendar, Check, X, Wrench
 } from 'lucide-react';
 import * as THREE from 'three';
 import { 
@@ -16,7 +16,7 @@ import {
   RoomRecord, 
   SafetyAssetRecord 
 } from './CampusThreeViewer';
-import { SpatialHotspotCard, HotspotData } from './SpatialHotspotCard';
+import { SpatialHotspotCard } from './SpatialHotspotCard';
 import { RoomTourDock, RoomTourItem } from './RoomTourDock';
 import { ArchitecturalTourHeader } from './ArchitecturalTourHeader';
 import { ImmersiveRoomModal } from './ImmersiveRoomModal';
@@ -82,6 +82,7 @@ export interface Building3DTwin {
 }
 
 interface Campus3DViewerProps {
+  onSelectBuilding?: (building: BuildingRecord) => void;
   onRoomSelect?: (room: RoomTwinData) => void;
   disruptionTriggered?: boolean;
 }
@@ -105,30 +106,31 @@ const FUNCTIONAL_ZONES = [
   { id: 'INCIDENT', name: 'Physical Plant (Rm 204)', color: '#EF4444' },
 ];
 
-export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, disruptionTriggered }) => {
+export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ 
+  onSelectBuilding, 
+  onRoomSelect, 
+  disruptionTriggered 
+}) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<CampusThreeViewer | null>(null);
 
   // High-level operational state
   const [twinData, setTwinData] = useState<Building3DTwin | null>(null);
-  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const initialModeParam = (urlParams?.get('mode') as ViewerMode) || 'campus';
-  const initialFloorParam = urlParams?.get('floor') || '0';
-  const initialHudParam = urlParams?.get('hud') !== '0';
-  const initialModalParam = urlParams?.get('modal');
-
   const [activeTab, setActiveTab] = useState<'inspector' | 'dashboard'>('inspector');
-  const [hudOpen, setHudOpen] = useState<boolean>(initialHudParam);
+  const [hudOpen, setHudOpen] = useState<boolean>(true);
+  
+  // Cinematic Tour State
   const [isTouring, setIsTouring] = useState<boolean>(false);
-  const [tourStepLabel, setTourStepLabel] = useState<string>('');
+  const [tourStepIndex, setTourStepIndex] = useState<number>(0);
+  const [totalTourSteps, setTotalTourSteps] = useState<number>(8);
+  const [tourStepLabel, setTourStepLabel] = useState<string>('Academic & AI Computing Center');
 
-  const [mode, setMode] = useState<ViewerMode>(initialModeParam);
-  const [selectedFloor, setSelectedFloor] = useState<string>(initialFloorParam);
+  const [mode, setMode] = useState<ViewerMode>('campus');
+  const [selectedFloor, setSelectedFloor] = useState<string>('0');
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingRecord | null>(null);
   const [selectedRoomRecord, setSelectedRoomRecord] = useState<RoomRecord | null>(null);
   const [selectedRoomForModal, setSelectedRoomForModal] = useState<RoomRecord | null>(null);
   const [selectedRoomForBooking, setSelectedRoomForBooking] = useState<RoomRecord | null>(null);
-  const [tourStepIndex, setTourStepIndex] = useState<number>(0);
   const [selectedAsset, setSelectedAsset] = useState<SafetyAssetRecord | null>(null);
   const [selectedZone, setSelectedZone] = useState<string>('ALL');
   const [showAssets, setShowAssets] = useState<boolean>(true);
@@ -137,26 +139,33 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
   const [view2DFallback, setView2DFallback] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMessage, setLoadingLabel] = useState<string>('Initializing 3D Spatial Twin...');
+  
+  // Notification Toast State
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'alert' } | null>(null);
 
   // Hotspot Screen Position state
   const [hotspotScreenPos, setHotspotScreenPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Fetch telemetry and existing backend data
-  const loadTwin = async () => {
-    try {
-      const res = await fetch('/api/buildings/bld-eng-01/twin');
-      if (res.ok) {
-        const data = await res.json();
-        setTwinData(data);
-      }
-    } catch (err) {
-      console.warn('[Campus3DViewer] Telemetry API call skipped (running autonomous):', err);
-    }
+  // Room 204 Disruption State
+  const [room204Disrupted, setRoom204Disrupted] = useState<boolean>(true);
+
+  const showToast = (text: string, type: 'success' | 'alert' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  useEffect(() => {
-    loadTwin();
-  }, [disruptionTriggered]);
+  const updateHotspotPosition = (centerCoords: [number, number, number]) => {
+    if (!viewerRef.current || !mountRef.current) return;
+    const worldPos = new THREE.Vector3(centerCoords[0], centerCoords[1] + 12, centerCoords[2]);
+    const screen = viewerRef.current.getScreenCoordinates(worldPos);
+    if (screen.visible) {
+      const maxWidth = mountRef.current.clientWidth || window.innerWidth;
+      const clampedX = Math.min(Math.max(screen.x, 20), maxWidth - 340);
+      setHotspotScreenPos({ x: clampedX, y: screen.y });
+    } else {
+      setHotspotScreenPos(null);
+    }
+  };
 
   // Initialize Three.js Digital Twin Engine
   useEffect(() => {
@@ -169,14 +178,24 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
       onSelectBuilding: (bldg) => {
         setSelectedBuilding(bldg);
         setSelectedRoomRecord(null);
+        setSelectedAsset(null);
         if (bldg) {
+          onSelectBuilding?.(bldg);
           updateHotspotPosition(bldg.center);
         } else {
           setHotspotScreenPos(null);
         }
       },
+      onSelectLevel: (fl) => {
+        setSelectedFloor(fl);
+        setMode('floor');
+        setSelectedRoomRecord(null);
+      },
       onSelectRoom: (rm) => {
         setSelectedRoomRecord(rm);
+        setSelectedAsset(null);
+        setHudOpen(true);
+        setActiveTab('inspector');
         if (rm && onRoomSelect) {
           const isOutage = (disruptionTriggered && rm.id === 'ROOM_ACAD_204') || rm.power_status === 'OUTAGE';
           onRoomSelect({
@@ -200,8 +219,20 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
       },
       onSelectAsset: (ast) => {
         setSelectedAsset(ast);
+        setHudOpen(true);
+        setActiveTab('dashboard');
       },
-      onModeChange: (m) => setMode(m),
+      onModeChange: (m) => {
+        setMode(m);
+        if (m !== 'campus') {
+          setHotspotScreenPos(null);
+        }
+      },
+      onCameraChange: () => {
+        if (selectedBuilding && mode === 'campus') {
+          updateHotspotPosition(selectedBuilding.center);
+        }
+      },
       onLoadingChange: (isLoading, label) => {
         setLoading(isLoading);
         if (label) setLoadingLabel(label);
@@ -210,34 +241,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
           if (defaultBldg) {
             setSelectedBuilding(defaultBldg);
             setTimeout(() => {
-              const worldPos = new THREE.Vector3(defaultBldg.center[0], defaultBldg.center[1] + 12, defaultBldg.center[2]);
-              const screen = viewer.getScreenCoordinates(worldPos);
-              if (screen.visible) {
-                setHotspotScreenPos({ x: Math.min(screen.x, window.innerWidth - 380), y: screen.y });
-              }
-            }, 300);
-          }
-        }
-        if (!isLoading && viewer.metadata?.rooms) {
-          const roomParam = urlParams?.get('room') || initialModalParam;
-          const zoneParam = urlParams?.get('zone');
-          if (roomParam) {
-            const rm = viewer.metadata.rooms.find(r => r.id === roomParam);
-            if (rm) {
-              setSelectedRoomRecord(rm);
-              if (initialModalParam) setSelectedRoomForModal(rm);
-              setTimeout(() => {
-                if (rm.camera_focus) {
-                  viewer.focusRoomCamera(rm.camera_focus);
-                }
-                viewer.highlightRoomById(rm.id, rm.zone === 'INCIDENT' ? 0xEF4444 : 0x06B6D4);
-              }, 400);
-            }
-          }
-          if (zoneParam) {
-            setSelectedZone(zoneParam);
-            setTimeout(() => {
-              viewer.setZoneFilter(zoneParam);
+              updateHotspotPosition(defaultBldg.center);
             }, 300);
           }
         }
@@ -255,22 +259,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
     };
   }, [view2DFallback]);
 
-  const updateHotspotPosition = (centerCoords: [number, number, number]) => {
-    if (!viewerRef.current) return;
-    const worldPos = new THREE.Vector3(centerCoords[0], centerCoords[1] + 12, centerCoords[2]);
-    const screen = viewerRef.current.getScreenCoordinates(worldPos);
-    if (screen.visible) {
-      setHotspotScreenPos({ x: Math.min(screen.x, window.innerWidth - 380), y: screen.y });
-    } else {
-      setHotspotScreenPos(null);
-    }
-  };
-
-  // Disruption State Management for Room 204 (Active Outage vs Nominal/Restored)
-  const [room204Disrupted, setRoom204Disrupted] = useState<boolean>(true);
-  const isRoom204Outage = room204Disrupted;
-
-  // 180° Camera Inversion / Reverse Viewing Angle
+  // Reverse Camera Angle 180°
   const handleReverseAngle = () => {
     viewerRef.current?.reverseCameraAngle(1.1);
   };
@@ -284,36 +273,18 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
     }
   };
 
-  // Real-time Disruption State Reversal (Simulate Breaker Trip ⇄ Power Restored)
+  // Real-time Disruption State Reversal (Room 204 Outage ⇄ Restored)
   const handleToggleDisruptionState = () => {
     const newState = viewerRef.current?.toggleRoomDisruption('ROOM_ACAD_204');
     const isNowDisrupted = newState !== undefined ? newState : !room204Disrupted;
     setRoom204Disrupted(isNowDisrupted);
 
-    // Update local twinData state for reactive UI updates
-    if (twinData?.floors?.FLOOR_2?.rooms) {
-      const updatedRooms = twinData.floors.FLOOR_2.rooms.map((r) => {
-        if (r.room_number === '204') {
-          return {
-            ...r,
-            power_status: isNowDisrupted ? ('OUTAGE' as const) : ('NORMAL' as const),
-            current_state: isNowDisrupted ? ('OUT_OF_SERVICE' as const) : ('AVAILABLE' as const),
-            has_active_outage: isNowDisrupted
-          };
-        }
-        return r;
-      });
-      setTwinData({
-        ...twinData,
-        floors: {
-          ...twinData.floors,
-          FLOOR_2: {
-            ...twinData.floors.FLOOR_2,
-            rooms: updatedRooms
-          }
-        }
-      });
-    }
+    showToast(
+      isNowDisrupted 
+        ? "Simulated Electrical Breaker Trip triggered in Room 204 (Outage Active)." 
+        : "Sub-panel Breaker 204-B reset. Room 204 power fully restored!",
+      isNowDisrupted ? 'alert' : 'success'
+    );
 
     if (selectedRoomRecord?.id === 'ROOM_ACAD_204') {
       setSelectedRoomRecord({
@@ -328,6 +299,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
 
   const handleModeChange = (newMode: ViewerMode) => {
     setMode(newMode);
+    setSelectedAsset(null);
     viewerRef.current?.setMode(newMode, selectedBuilding?.id || 'academic', selectedFloor);
     if (newMode !== 'campus') {
       setHotspotScreenPos(null);
@@ -337,6 +309,8 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
   const handleFloorChange = (fl: string) => {
     setSelectedFloor(fl);
     viewerRef.current?.setFloor(fl);
+    setSelectedRoomRecord(null);
+    setSelectedAsset(null);
   };
 
   const handleFlyToBlock = (bldgId: string) => {
@@ -345,13 +319,13 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
       const bldg = viewerRef.current.metadata?.buildings.find(b => b.id === bldgId);
       if (bldg) {
         setSelectedBuilding(bldg);
+        onSelectBuilding?.(bldg);
         setTimeout(() => updateHotspotPosition(bldg.center), 600);
       }
     }
   };
 
   const handleZoneSelect = (zoneId: string) => {
-    // Reversal / Toggle: clicking an already selected single zone reverses back to 'ALL'!
     const targetZone = selectedZone === zoneId && zoneId !== 'ALL' ? 'ALL' : zoneId;
     setSelectedZone(targetZone);
     if (viewerRef.current) {
@@ -394,68 +368,170 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
 
   const handleAssetFilter = (filter: string) => {
     setAssetFilter(filter);
-    viewerRef.current?.setSafetyAssetsVisible(showAssets, filter);
+    setShowAssets(true);
+    viewerRef.current?.setSafetyAssetsVisible(true, filter);
   };
 
+  // Cinematic Tour Controllers
   const handleStartCinematicTour = () => {
     if (isTouring) {
-      viewerRef.current?.stopCinematicTour();
-      setIsTouring(false);
-      setTourStepLabel('');
+      if (viewerRef.current?.isTourPaused) {
+        viewerRef.current.resumeCinematicTour((idx, total, label) => {
+          setTourStepIndex(idx);
+          setTotalTourSteps(total);
+          setTourStepLabel(label);
+        });
+      } else {
+        viewerRef.current?.pauseCinematicTour();
+      }
     } else {
       setIsTouring(true);
-      viewerRef.current?.startCinematicTour((stepName) => {
-        setTourStepLabel(stepName);
+      viewerRef.current?.startCinematicTour((idx, total, label) => {
+        setTourStepIndex(idx);
+        setTotalTourSteps(total);
+        setTourStepLabel(label);
       });
     }
   };
 
+  const handleNextTourStep = () => {
+    viewerRef.current?.nextTourStep();
+  };
+
+  const handlePrevTourStep = () => {
+    viewerRef.current?.prevTourStep();
+  };
+
+  const handleRestartTour = () => {
+    viewerRef.current?.goToTourStep(0);
+  };
+
+  const handleCloseTour = () => {
+    viewerRef.current?.stopCinematicTour();
+    setIsTouring(false);
+  };
+
+  // Comprehensive Search Handler
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
     const q = searchQuery.toLowerCase().trim();
-    if (q.includes('acad') || q.includes('ai') || q.includes('cutaway')) {
-      handleModeChange('building');
-    } else if (q.includes('204') || q.includes('outage') || q.includes('lecture')) {
-      handleModeChange('floor');
-      handleFloorChange('2');
-      viewerRef.current?.focusRoomCamera([8, 10, -6]);
-    } else if (q.includes('101') || q.includes('robot')) {
-      handleModeChange('floor');
-      handleFloorChange('1');
-      viewerRef.current?.focusRoomCamera([-8, 6, -6]);
-    } else if (q.includes('003') || q.includes('cluster') || q.includes('gpu')) {
-      handleModeChange('floor');
-      handleFloorChange('0');
-      viewerRef.current?.focusRoomCamera([8, 2, -6]);
-    } else {
-      const match = CAMPUS_BLOCKS.find(b => b.name.toLowerCase().includes(q) || b.id.includes(q));
-      if (match) {
-        handleFlyToBlock(match.id);
-      } else {
-        handleModeChange('campus');
-      }
+    const rooms = viewerRef.current?.metadata?.rooms || [];
+    const buildings = viewerRef.current?.metadata?.buildings || [];
+    const assets = viewerRef.current?.metadata?.safety_assets || [];
+
+    // 1. Search Rooms
+    const matchedRoom = rooms.find(r => 
+      r.id.toLowerCase().includes(q) || 
+      r.name.toLowerCase().includes(q) || 
+      r.type.toLowerCase().includes(q) ||
+      r.equipment?.some(eq => eq.toLowerCase().includes(q))
+    );
+    if (matchedRoom) {
+      if (mode !== 'floor') handleModeChange('floor');
+      handleFloorChange(matchedRoom.floor);
+      setSelectedRoomRecord(matchedRoom);
+      setHudOpen(true);
+      setActiveTab('inspector');
+      setTimeout(() => {
+        if (matchedRoom.camera_focus) viewerRef.current?.focusRoomCamera(matchedRoom.camera_focus);
+        viewerRef.current?.highlightRoomById(matchedRoom.id, matchedRoom.disrupted ? 0xEF4444 : 0x06B6D4);
+      }, 300);
+      showToast(`Navigated to ${matchedRoom.name} (Level 0${matchedRoom.floor})`);
+      return;
     }
+
+    // 2. Search Safety Assets
+    const matchedAsset = assets.find(a => 
+      a.id.toLowerCase().includes(q) || 
+      a.label.toLowerCase().includes(q) || 
+      a.type.toLowerCase().includes(q)
+    );
+    if (matchedAsset) {
+      setShowAssets(true);
+      setAssetFilter('all');
+      viewerRef.current?.setSafetyAssetsVisible(true, 'all');
+      setSelectedAsset(matchedAsset);
+      if (mode !== 'floor') handleModeChange('floor');
+      handleFloorChange(matchedAsset.floor);
+      showToast(`Located ${matchedAsset.label} on Level 0${matchedAsset.floor}`);
+      return;
+    }
+
+    // 3. Search Buildings
+    const matchedBldg = buildings.find(b => 
+      b.id.toLowerCase().includes(q) || 
+      b.name.toLowerCase().includes(q) || 
+      b.code.toLowerCase().includes(q) ||
+      b.departments?.some(d => d.toLowerCase().includes(q))
+    );
+    if (matchedBldg) {
+      handleFlyToBlock(matchedBldg.id);
+      showToast(`Flying to ${matchedBldg.name}`);
+      return;
+    }
+
+    // Fallback campus aerial
+    handleModeChange('campus');
   };
 
-  // Solenne-style Room Dock Items for Level 02
-  const roomDockItems: RoomTourItem[] = [
-    { id: 'ROOM_ACAD_202', label: 'AI Superpod', category: 'ai' },
-    { id: 'ROOM_ACAD_204', label: room204Disrupted ? 'Amphitheater (Red Zone)' : 'Amphitheater (Restored)', category: 'lecture', isOutage: room204Disrupted },
-    { id: 'ROOM_ACAD_203', label: 'Ideation Pod', category: 'collab' },
-    { id: 'ROOM_ACAD_201', label: 'Executive Senate', category: 'exec' },
-  ];
+  // Dynamic Room Dock Items based on current selected floor
+  const currentFloorRooms: RoomTourItem[] = useMemo(() => {
+    const rooms = viewerRef.current?.metadata?.rooms?.filter(r => r.floor === selectedFloor) || [];
+    if (rooms.length > 0) {
+      return rooms.map(r => ({
+        id: r.id,
+        label: r.id === 'ROOM_ACAD_204'
+          ? (room204Disrupted ? 'Rm 204 (Outage Active)' : 'Rm 204 (Restored)')
+          : r.name,
+        category: r.zone?.toLowerCase() === 'ai' ? 'ai'
+          : r.zone?.toLowerCase() === 'executive' ? 'exec'
+          : r.zone?.toLowerCase() === 'collab' ? 'collab'
+          : 'lecture',
+        isOutage: r.id === 'ROOM_ACAD_204' ? room204Disrupted : r.disrupted || r.power_status === 'OUTAGE'
+      }));
+    }
+    // Fallback defaults
+    if (selectedFloor === '1') {
+      return [
+        { id: 'ROOM_ACAD_101', label: 'AI Supercluster Lab', category: 'ai' },
+        { id: 'ROOM_ACAD_102', label: 'Seminar Hall 102', category: 'lecture' },
+        { id: 'ROOM_ACAD_103', label: 'Innovation Lounge', category: 'collab' },
+        { id: 'ROOM_ACAD_104', label: 'Robotics Workshop', category: 'ai' },
+      ];
+    } else if (selectedFloor === '0') {
+      return [
+        { id: 'ROOM_ACAD_001', label: 'Welcome Commons', category: 'collab' },
+        { id: 'ROOM_ACAD_002', label: 'Auditorium Hall A', category: 'lecture' },
+        { id: 'ROOM_ACAD_003', label: 'AI Study Commons', category: 'ai' },
+        { id: 'ROOM_ACAD_004', label: 'Faculty Offices', category: 'exec' },
+      ];
+    } else {
+      return [
+        { id: 'ROOM_ACAD_201', label: 'Executive Senate', category: 'exec' },
+        { id: 'ROOM_ACAD_202', label: 'AI Superpod', category: 'ai' },
+        { id: 'ROOM_ACAD_203', label: 'Ideation Pod', category: 'collab' },
+        { id: 'ROOM_ACAD_204', label: room204Disrupted ? 'Amphitheater (Red Zone)' : 'Amphitheater (Restored)', category: 'lecture', isOutage: room204Disrupted },
+      ];
+    }
+  }, [selectedFloor, room204Disrupted]);
 
   const handleDockSelectRoom = (roomId: string) => {
     if (!viewerRef.current) return;
-    if (mode !== 'floor') {
-      viewerRef.current.setMode('floor', 'academic', '2');
-      setSelectedFloor('2');
+    const rm = viewerRef.current.metadata?.rooms?.find(r => r.id === roomId);
+    const targetFloor = rm?.floor || selectedFloor;
+    
+    if (mode !== 'floor' || selectedFloor !== targetFloor) {
+      viewerRef.current.setMode('floor', 'academic', targetFloor);
+      setSelectedFloor(targetFloor);
     }
-    const rm = viewerRef.current.metadata?.rooms.find(r => r.id === roomId);
+    
     if (rm) {
       setSelectedRoomRecord(rm);
+      setHudOpen(true);
+      setActiveTab('inspector');
+      viewerRef.current.highlightRoomById(rm.id, rm.id === 'ROOM_ACAD_204' && room204Disrupted ? 0xEF4444 : 0x06B6D4);
       if (rm.camera_focus) {
         viewerRef.current.focusRoomCamera(rm.camera_focus);
       }
@@ -469,25 +545,34 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
         onStartTour={handleStartCinematicTour}
         isTouring={isTouring}
         onNavigateTab={(tab) => {
-          if (tab === 'campus') handleModeChange('campus');
-          else if (tab === 'cutaway') handleModeChange('building');
-          else if (tab === 'ai') {
+          if (tab === 'campus') {
+            handleModeChange('campus');
+          } else if (tab === 'cutaway') {
+            handleModeChange('building');
+          } else if (tab === 'ai') {
             handleZoneSelect('AI');
-            handleFlyToBlock('academic');
+            if (mode === 'campus') handleFlyToBlock('academic');
           } else if (tab === 'safety') {
             handleToggleAssets(true);
+            setHudOpen(true);
+            setActiveTab('dashboard');
           }
         }}
-        activeNavTab={mode}
+        activeNavTab={
+          activeTab === 'dashboard' && showAssets ? 'safety' :
+          selectedZone === 'AI' ? 'ai' :
+          mode === 'building' ? 'cutaway' :
+          mode === 'campus' ? 'campus' : 'cutaway'
+        }
       />
 
-      {/* 3D WebGL Canvas Mount Container - Full Bleed Maximum Real Estate */}
+      {/* 3D WebGL Canvas Mount Container */}
       <div 
         ref={mountRef} 
-        className={`w-full h-full absolute inset-0 cursor-grab active:cursor-grabbing ${view2DFallback ? 'hidden' : 'block'}`} 
+        className={`w-full h-full absolute inset-0 ${view2DFallback ? 'hidden' : 'block'}`} 
       />
 
-      {/* Solenne-style Interactive Spatial Hotspot Card */}
+      {/* Interactive Spatial Hotspot Card on Selected Building */}
       {selectedBuilding && mode === 'campus' && hotspotScreenPos && (
         <SpatialHotspotCard
           hotspot={{
@@ -514,7 +599,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
           <div className="w-full max-w-4xl h-[85%] bg-[#0A0F1D] rounded-2xl border border-slate-800 p-4 shadow-2xl flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-200">
-                <Navigation className="w-4 h-4 text-cyan-400" />
+                <Navigation className="w-4 h-4 text-[#BFF549]" />
                 <span>Accessible 2D Campus Floor Plan (Level 0{selectedFloor})</span>
               </div>
               <div className="flex items-center gap-2">
@@ -523,7 +608,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                     key={fl}
                     onClick={() => setSelectedFloor(fl)}
                     className={`px-2.5 py-1 rounded text-xs font-mono font-bold ${
-                      selectedFloor === fl ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+                      selectedFloor === fl ? 'bg-[#BFF549] text-black' : 'bg-slate-800 text-slate-300'
                     }`}
                   >
                     L0{fl}
@@ -545,29 +630,37 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
       {/* Loading Overlay */}
       {loading && !view2DFallback && (
         <div className="absolute inset-0 bg-[#070B14]/85 backdrop-blur-md z-40 flex flex-col items-center justify-center gap-3">
-          <div className="w-10 h-10 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-2 border-[#BFF549] border-t-transparent rounded-full animate-spin" />
           <span className="text-xs font-semibold text-slate-300 tracking-wide">{loadingMessage}</span>
         </div>
       )}
 
-      {/* Tour Step Notification Banner */}
-      {isTouring && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-950/80 backdrop-blur-md border border-cyan-500/60 shadow-xl text-xs text-cyan-300 animate-bounce">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Cinematic Flyover: <strong>{tourStepLabel}</strong></span>
+      {/* Notification Toast */}
+      {toastMessage && (
+        <div className={`fixed top-18 right-8 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-2xl border backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-300 ${
+          toastMessage.type === 'alert'
+            ? 'bg-red-950/90 border-red-500/70 text-red-200'
+            : 'bg-[#0D152A]/95 border-[#BFF549]/60 text-white'
+        }`}>
+          {toastMessage.type === 'alert' ? (
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-[#BFF549] shrink-0" />
+          )}
+          <span className="text-xs font-semibold">{toastMessage.text}</span>
         </div>
       )}
 
-      {/* TOP FLOATING HUD BAR (Mode & Zone Selection) */}
-      <div className="absolute top-16 left-4 z-20 flex flex-col gap-2 max-w-[calc(100vw-30rem)]">
+      {/* TOP FLOATING HUD BAR (Mode, Level & Zone Selection) */}
+      <div className="absolute top-16 left-4 z-20 flex flex-col gap-2 max-w-[calc(100vw-28rem)]">
         {/* Primary Mode Switcher */}
-        <div className="flex items-center gap-2 bg-[#0B132B]/85 backdrop-blur-xl px-3 py-2 rounded-xl border border-slate-800 shadow-2xl">
+        <div className="flex items-center gap-2 bg-[#0B132B]/90 backdrop-blur-xl px-3 py-2 rounded-xl border border-slate-800 shadow-2xl">
           <div className="flex items-center gap-1 border-r border-slate-700/60 pr-2 mr-1">
             <button
               onClick={() => handleModeChange('campus')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                 mode === 'campus'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/25'
+                  ? 'bg-[#BFF549] text-black font-bold shadow-md shadow-[#BFF549]/20'
                   : 'text-slate-300 hover:bg-slate-800'
               }`}
             >
@@ -579,7 +672,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
               onClick={() => handleModeChange('building')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                 mode === 'building'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/25'
+                  ? 'bg-[#BFF549] text-black font-bold shadow-md shadow-[#BFF549]/20'
                   : 'text-slate-300 hover:bg-slate-800'
               }`}
             >
@@ -591,7 +684,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
               onClick={() => handleModeChange('floor')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                 mode === 'floor'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/25'
+                  ? 'bg-[#BFF549] text-black font-bold shadow-md shadow-[#BFF549]/20'
                   : 'text-slate-300 hover:bg-slate-800'
               }`}
             >
@@ -600,16 +693,19 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
             </button>
           </div>
 
-          {/* Level Switcher (Active in Floor Mode) */}
-          {mode === 'floor' && (
+          {/* Level Switcher (Active in Floor Mode or Cutaway Mode) */}
+          {(mode === 'floor' || mode === 'building') && (
             <div className="flex items-center gap-1 border-r border-slate-700/60 pr-2 mr-1">
               {['0', '1', '2'].map((fl) => (
                 <button
                   key={fl}
-                  onClick={() => handleFloorChange(fl)}
+                  onClick={() => {
+                    if (mode !== 'floor') handleModeChange('floor');
+                    handleFloorChange(fl);
+                  }}
                   className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold transition-all ${
-                    selectedFloor === fl
-                      ? 'bg-cyan-400 text-slate-950'
+                    selectedFloor === fl && mode === 'floor'
+                      ? 'bg-[#BFF549] text-black'
                       : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                   }`}
                 >
@@ -625,15 +721,15 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
             className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium flex items-center gap-1 transition-colors"
             title="Toggle 2D Accessible Vector Plan"
           >
-            <Eye className="w-3.5 h-3.5 text-cyan-400" />
+            <Eye className="w-3.5 h-3.5 text-[#BFF549]" />
             <span>{view2DFallback ? '3D View' : '2D Plan'}</span>
           </button>
         </div>
 
         {/* Functional Multi-Zone Selector Pills & Dynamic Reversal Controls */}
-        <div className="flex items-center gap-1.5 bg-[#0B132B]/85 backdrop-blur-xl px-2.5 py-1.5 rounded-xl border border-slate-800 shadow-xl overflow-x-auto">
+        <div className="flex items-center gap-1.5 bg-[#0B132B]/90 backdrop-blur-xl px-2.5 py-1.5 rounded-xl border border-slate-800 shadow-xl overflow-x-auto">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 border-r border-slate-700/60 mr-1 flex items-center gap-1">
-            <Cpu className="w-3 h-3 text-cyan-400" />
+            <Cpu className="w-3 h-3 text-[#BFF549]" />
             <span>Zones</span>
           </span>
           {FUNCTIONAL_ZONES.map((z) => (
@@ -654,7 +750,6 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
             </button>
           ))}
 
-          {/* Quick Zone Reversal Controls */}
           <div className="h-4 w-[1px] bg-slate-700/80 mx-1" />
 
           {/* Bidirectional Zone Switcher: AI Supercluster ⇄ Red Disrupted Zone */}
@@ -705,7 +800,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
       </div>
 
       {/* TOP RIGHT SAFETY & SEARCH HUD */}
-      <div className="absolute top-16 right-4 z-20 flex items-center gap-2 bg-[#0B132B]/85 backdrop-blur-xl px-3 py-2 rounded-xl border border-slate-800 shadow-2xl text-xs">
+      <div className="absolute top-16 right-4 z-20 flex items-center gap-2 bg-[#0B132B]/90 backdrop-blur-xl px-3 py-2 rounded-xl border border-slate-800 shadow-2xl text-xs">
         <button
           onClick={() => handleToggleAssets(!showAssets)}
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold transition-colors ${
@@ -751,18 +846,18 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
         <form onSubmit={handleSearch} className="flex items-center pl-2 border-l border-slate-700/60">
           <input
             type="text"
-            placeholder="Search space..."
+            placeholder="Search space, asset, code..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 w-28 focus:w-40 transition-all focus:outline-none focus:border-cyan-500"
+            className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 w-32 focus:w-48 transition-all focus:outline-none focus:border-[#BFF549]"
           />
         </form>
 
         {/* HUD Collapse / Expand Button */}
         <button
           onClick={() => setHudOpen(!hudOpen)}
-          className="ml-1 p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 transition-colors"
-          title={hudOpen ? 'Collapse Inspector HUD (Maximize 3D Real Estate)' : 'Open Inspector HUD'}
+          className="ml-1 p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[#BFF549] transition-colors"
+          title={hudOpen ? 'Collapse Inspector HUD' : 'Open Inspector HUD'}
         >
           {hudOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
@@ -771,7 +866,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
       {/* Solenne-Style Room Tour Segmented Dock (Active in Cutaway and Floor modes) */}
       {(mode === 'building' || mode === 'floor') && (
         <RoomTourDock
-          rooms={roomDockItems}
+          rooms={currentFloorRooms}
           activeRoomId={selectedRoomRecord?.id || null}
           onSelectRoom={handleDockSelectRoom}
           onReverseAngle={handleReverseAngle}
@@ -784,12 +879,12 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
 
       {/* BOTTOM CAMPUS BUILDING BLOCK QUICK JUMP CAROUSEL (Campus Aerial Overview Only) */}
       {mode === 'campus' && (
-        <div className="absolute bottom-6 left-6 z-20 flex items-center gap-2 bg-[#0B132B]/85 backdrop-blur-xl px-3 py-2 rounded-xl border border-slate-800 shadow-2xl">
+        <div className="absolute bottom-6 left-6 z-20 flex items-center gap-2 bg-[#0B132B]/90 backdrop-blur-xl px-3 py-2 rounded-xl border border-slate-800 shadow-2xl">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 border-r border-slate-700/60 pr-2 mr-1">
-            <Navigation className="w-3.5 h-3.5 text-cyan-400" />
+            <Navigation className="w-3.5 h-3.5 text-[#BFF549]" />
             <span>Fly-To Block</span>
           </span>
-          <div className="flex items-center gap-1.5 overflow-x-auto max-w-[50vw]">
+          <div className="flex items-center gap-1.5 overflow-x-auto max-w-[45vw]">
             {CAMPUS_BLOCKS.map((bldg) => {
               const Icon = bldg.icon;
               const isSelected = selectedBuilding?.id === bldg.id;
@@ -799,14 +894,14 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                   onClick={() => handleFlyToBlock(bldg.id)}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
                     isSelected
-                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-lg shadow-cyan-500/25'
+                      ? 'bg-[#BFF549] text-black font-bold shadow-lg shadow-[#BFF549]/20'
                       : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-slate-950' : bldg.isAI ? 'text-cyan-400' : 'text-slate-400'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-black' : bldg.isAI ? 'text-[#BFF549]' : 'text-slate-400'}`} />
                   <span>{bldg.name}</span>
                   {bldg.isAI && (
-                    <span className={`text-[9px] px-1 rounded font-bold ${isSelected ? 'bg-slate-950 text-cyan-300' : 'bg-cyan-950 text-cyan-400 border border-cyan-800'}`}>
+                    <span className={`text-[9px] px-1 rounded font-bold ${isSelected ? 'bg-black text-[#BFF549]' : 'bg-[#BFF549]/10 text-[#BFF549] border border-[#BFF549]/30'}`}>
                       AI
                     </span>
                   )}
@@ -817,7 +912,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
         </div>
       )}
 
-      {/* 4-Sector Building Switcher Grid (Reference Image 1: Campus Mode) */}
+      {/* 4-Sector Building Switcher Grid (Campus Mode) */}
       {mode === 'campus' && (
         <div className={`absolute bottom-6 z-20 transition-all duration-300 ${hudOpen ? 'right-[26rem]' : 'right-6'} w-72`}>
           <BuildingSwitcherGrid
@@ -827,47 +922,101 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
         </div>
       )}
 
-      {/* Autonomous Cinematic Tour Controller HUD (The Solenne Walkthrough) */}
+      {/* Autonomous Cinematic Tour Controller HUD */}
       {isTouring && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="absolute top-18 left-1/2 -translate-x-1/2 z-30 animate-in fade-in slide-in-from-top-4 duration-300">
           <CinematicTourController
-            isPlaying={isTouring}
+            isPlaying={!viewerRef.current?.isTourPaused}
             currentStep={tourStepIndex}
-            totalSteps={5}
+            totalSteps={totalTourSteps}
             currentLabel={tourStepLabel}
             onTogglePlay={handleStartCinematicTour}
-            onNextStep={() => {
-              setTourStepIndex((prev) => (prev + 1) % 5);
-              viewerRef.current?.startCinematicTour((l) => setTourStepLabel(l));
-            }}
-            onPrevStep={() => {
-              setTourStepIndex((prev) => (prev - 1 + 5) % 5);
-              viewerRef.current?.startCinematicTour((l) => setTourStepLabel(l));
-            }}
-            onRestart={() => {
-              setTourStepIndex(0);
-              viewerRef.current?.stopCinematicTour();
-              handleStartCinematicTour();
-            }}
-            onClose={() => {
-              viewerRef.current?.stopCinematicTour();
-              setIsTouring(false);
-              setTourStepLabel('');
-            }}
+            onNextStep={handleNextTourStep}
+            onPrevStep={handlePrevTourStep}
+            onRestart={handleRestartTour}
+            onClose={handleCloseTour}
           />
+        </div>
+      )}
+
+      {/* Interactive Safety Asset Pin Callout */}
+      {selectedAsset && (
+        <div className="absolute top-28 left-6 z-30 w-80 bg-[#090E1D]/95 backdrop-blur-xl border border-cyan-500/60 rounded-2xl p-4 shadow-2xl animate-in fade-in">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              {selectedAsset.type === 'fire_extinguisher' ? (
+                <Flame className="w-4 h-4 text-red-400" />
+              ) : selectedAsset.type === 'aed' ? (
+                <Heart className="w-4 h-4 text-pink-400" />
+              ) : (
+                <Shield className="w-4 h-4 text-cyan-400" />
+              )}
+              <span className="text-xs font-bold text-white uppercase tracking-wider">Safety Asset Node</span>
+            </div>
+            <button
+              onClick={() => setSelectedAsset(null)}
+              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="mt-3 space-y-2 text-xs">
+            <div>
+              <div className="text-[10px] text-slate-400 font-mono">ASSET ID: {selectedAsset.id}</div>
+              <h4 className="font-bold text-white text-sm mt-0.5">{selectedAsset.label}</h4>
+            </div>
+
+            <div className="flex items-center justify-between pt-1 text-slate-300">
+              <span>Location:</span>
+              <span className="font-mono text-cyan-400 font-bold">Level 0{selectedAsset.floor} • Academic</span>
+            </div>
+
+            <div className="flex items-center justify-between text-slate-300">
+              <span>Inspection Status:</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                selectedAsset.status === 'WARNING_CHECK'
+                  ? 'bg-amber-950 text-amber-300 border border-amber-700'
+                  : 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+              }`}>
+                {selectedAsset.status}
+              </span>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                onClick={() => {
+                  showToast(`Safety inspection verified for ${selectedAsset.id}. Next check in 30 days.`);
+                  setSelectedAsset(null);
+                }}
+                className="flex-1 py-1.5 bg-[#BFF549] hover:bg-[#aee63a] text-black font-bold rounded-lg text-[11px] transition-colors"
+              >
+                Log Inspection
+              </button>
+              <button
+                onClick={() => {
+                  showToast(`Work order WO-2026-AST logged for ${selectedAsset.id}.`, 'alert');
+                  setSelectedAsset(null);
+                }}
+                className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px]"
+              >
+                Report Issue
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* FLOATING GLASSMORHPIC INSPECTOR & DASHBOARD DRAWER */}
       {hudOpen && (
-        <div className="w-96 absolute right-4 top-28 bottom-6 z-20 backdrop-blur-xl bg-[#090E1D]/92 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-all duration-300 animate-in fade-in">
+        <div className="w-96 absolute right-4 top-28 bottom-6 z-20 backdrop-blur-xl bg-[#090E1D]/95 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-all duration-300 animate-in fade-in">
           {/* Drawer Tabs */}
           <div className="flex border-b border-slate-800 bg-[#0B132B]">
             <button
               onClick={() => setActiveTab('inspector')}
               className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
                 activeTab === 'inspector'
-                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-[#090E1D]'
+                  ? 'text-[#BFF549] border-b-2 border-[#BFF549] bg-[#090E1D]'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -878,7 +1027,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
               onClick={() => setActiveTab('dashboard')}
               className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
                 activeTab === 'dashboard'
-                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-[#090E1D]'
+                  ? 'text-[#BFF549] border-b-2 border-[#BFF549] bg-[#090E1D]'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -895,7 +1044,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                 <div className="p-3.5 bg-gradient-to-br from-cyan-950/40 to-slate-900 rounded-xl border border-cyan-800/40 shadow-inner">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Cpu className="w-4 h-4 text-cyan-400 animate-pulse" />
+                      <Cpu className="w-4 h-4 text-[#BFF549] animate-pulse" />
                       <span className="text-xs font-bold text-white uppercase tracking-wider">AI Computing Cluster</span>
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono">
@@ -905,7 +1054,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                   <div className="grid grid-cols-2 gap-2 mt-3">
                     <div className="p-2 bg-slate-900/80 rounded border border-slate-800">
                       <div className="text-[10px] text-slate-400">Compute Load</div>
-                      <div className="text-sm font-black text-cyan-400">94.2%</div>
+                      <div className="text-sm font-black text-[#BFF549]">94.2%</div>
                     </div>
                     <div className="p-2 bg-slate-900/80 rounded border border-slate-800">
                       <div className="text-[10px] text-slate-400">Rack Loop Temp</div>
@@ -923,7 +1072,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                   <div className="p-4 bg-slate-900/70 rounded-xl border border-slate-800">
                     <div className="flex items-start justify-between">
                       <div>
-                        <span className="text-[10px] font-mono text-cyan-400 font-bold">{selectedBuilding.code}</span>
+                        <span className="text-[10px] font-mono text-[#BFF549] font-bold">{selectedBuilding.code}</span>
                         <h3 className="text-sm font-bold text-white">{selectedBuilding.name}</h3>
                       </div>
                       <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
@@ -942,7 +1091,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                     {selectedBuilding.has_detailed_interior ? (
                       <button
                         onClick={() => handleModeChange('building')}
-                        className="mt-3 w-full py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-cyan-500/25"
+                        className="mt-3 w-full py-2 bg-[#BFF549] hover:bg-[#aee63a] text-black font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-[#BFF549]/20"
                       >
                         <Layers className="w-3.5 h-3.5" />
                         <span>Explore 3D Furnished Cutaway</span>
@@ -955,7 +1104,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                   </div>
                 )}
 
-                {/* Quick Classroom / Space Selector Pills (Level 02) */}
+                {/* Level 02 Spaces Grid */}
                 <div>
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Level 02 Spaces:</span>
                   <div className="grid grid-cols-2 gap-2 mt-2">
@@ -963,7 +1112,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                       { id: 'ROOM_ACAD_201', num: '201', name: 'Executive Senate', zone: 'EXECUTIVE', isOutage: false },
                       { id: 'ROOM_ACAD_202', num: '202', name: 'AI Vision Lab', zone: 'AI', isOutage: false },
                       { id: 'ROOM_ACAD_203', num: '203', name: 'Ideation Commons', zone: 'COLLAB', isOutage: false },
-                      { id: 'ROOM_ACAD_204', num: '204', name: 'Lecture Hall', zone: 'INCIDENT', isOutage: isRoom204Outage }
+                      { id: 'ROOM_ACAD_204', num: '204', name: 'Lecture Hall', zone: 'INCIDENT', isOutage: room204Disrupted }
                     ].map((r) => (
                       <button
                         key={r.id}
@@ -971,10 +1120,13 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                           handleModeChange('floor');
                           handleFloorChange('2');
                           viewerRef.current?.focusRoomCamera(r.id === 'ROOM_ACAD_204' ? [8, 10, -6] : [-8, 10, -6]);
+                          viewerRef.current?.highlightRoomById(r.id, r.isOutage ? 0xEF4444 : 0x06B6D4);
+                          const rm = viewerRef.current?.metadata?.rooms?.find(rm => rm.id === r.id);
+                          if (rm) setSelectedRoomRecord(rm);
                         }}
                         className={`p-2.5 rounded-lg border text-left transition-all ${
                           selectedRoomRecord?.id === r.id
-                            ? 'border-cyan-500 bg-cyan-950/40 text-cyan-300'
+                            ? 'border-[#BFF549] bg-[#BFF549]/10 text-white font-bold'
                             : r.isOutage
                             ? 'border-red-500 bg-red-950/40 text-red-300 animate-pulse'
                             : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-600'
@@ -984,7 +1136,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                           <span className="text-xs font-bold">Rm {r.num}</span>
                           <span className="text-[9px] font-mono text-cyan-400">{r.zone}</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{r.name}</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5 truncate">{r.name}</div>
                       </button>
                     ))}
                   </div>
@@ -993,7 +1145,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                 {/* Selected Room Details Card */}
                 {selectedRoomRecord ? (
                   <div className={`p-4 rounded-xl border ${
-                    (selectedRoomRecord.id === 'ROOM_ACAD_204' && isRoom204Outage)
+                    (selectedRoomRecord.id === 'ROOM_ACAD_204' && room204Disrupted)
                       ? 'border-red-500/50 bg-red-950/20' 
                       : 'border-slate-800 bg-slate-900/60'
                   }`}>
@@ -1003,11 +1155,11 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                         <p className="text-xs text-slate-400">Academic Complex • Level 0{selectedRoomRecord.floor}</p>
                       </div>
                       <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                        (selectedRoomRecord.id === 'ROOM_ACAD_204' && isRoom204Outage)
+                        (selectedRoomRecord.id === 'ROOM_ACAD_204' && room204Disrupted)
                           ? 'bg-red-500 text-white animate-pulse'
                           : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       }`}>
-                        {(selectedRoomRecord.id === 'ROOM_ACAD_204' && isRoom204Outage) ? 'DISRUPTED' : 'NORMAL'}
+                        {(selectedRoomRecord.id === 'ROOM_ACAD_204' && room204Disrupted) ? 'DISRUPTED' : 'NORMAL'}
                       </span>
                     </div>
 
@@ -1037,12 +1189,12 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                       <span>Open Immersive Room Walkthrough</span>
                     </button>
 
-                    {/* Reference Image 3: Reserve & Book Space Button */}
+                    {/* Reserve & Book Space Button */}
                     <button
                       onClick={() => setSelectedRoomForBooking(selectedRoomRecord)}
-                      className="mt-2 w-full py-2 bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors border border-cyan-500/40"
+                      className="mt-2 w-full py-2 bg-cyan-950/60 hover:bg-cyan-900/60 text-[#BFF549] font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors border border-[#BFF549]/40"
                     >
-                      <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                      <Calendar className="w-3.5 h-3.5 text-[#BFF549]" />
                       <span>Reserve / Book Space</span>
                     </button>
 
@@ -1100,13 +1252,13 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                       </div>
                     )}
 
-                    {/* Equipment List */}
+                    {/* Installed Equipment List */}
                     <div className="mt-4 pt-3 border-t border-slate-800">
                       <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Installed Hardware</h5>
                       <div className="space-y-1 text-xs">
                         {selectedRoomRecord.equipment?.map((eq, i) => (
                           <div key={i} className="flex items-center gap-1.5 text-slate-300">
-                            <CheckCircle2 className="w-3 h-3 text-cyan-400" />
+                            <CheckCircle2 className="w-3 h-3 text-[#BFF549]" />
                             <span>{eq}</span>
                           </div>
                         ))}
@@ -1120,7 +1272,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                 )}
               </>
             ) : (
-              /* Dashboard View (Matches Reference Image 2) */
+              /* Dashboard View */
               <>
                 {/* Costes Card */}
                 <div className="p-4 bg-slate-900/70 rounded-xl border border-slate-800">
@@ -1135,19 +1287,19 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                 {/* Consumo Card */}
                 <div className="p-4 bg-slate-900/70 rounded-xl border border-slate-800">
                   <div className="flex items-center gap-2 text-xs font-bold text-slate-300 mb-2">
-                    <Zap className="w-4 h-4 text-cyan-400" />
+                    <Zap className="w-4 h-4 text-[#BFF549]" />
                     <span>Consumo (Energy Consumption)</span>
                   </div>
                   <div className="flex justify-between items-baseline">
-                    <span className="text-2xl font-black text-cyan-400">19,754 kWh</span>
+                    <span className="text-2xl font-black text-[#BFF549]">19,754 kWh</span>
                     <span className="text-xs text-slate-400">Rooftop Solar: 3,120 kWh</span>
                   </div>
                   <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden mt-3 border border-slate-800">
-                    <div className="bg-cyan-500 h-full w-[78%]" />
+                    <div className="bg-[#BFF549] h-full w-[78%]" />
                   </div>
                 </div>
 
-                {/* PCs Card (Image 2 Donut reference) */}
+                {/* Workstations Card */}
                 <div className="p-4 bg-slate-900/70 rounded-xl border border-slate-800">
                   <div className="flex items-center gap-2 text-xs font-bold text-slate-300 mb-2">
                     <Monitor className="w-4 h-4 text-cyan-400" />
@@ -1185,7 +1337,7 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
                   </div>
                 </div>
 
-                {/* Critical Assets Telemetry HUD (Reference Image 1) */}
+                {/* Critical Assets Telemetry HUD */}
                 <CriticalAssetsWidget
                   totalAssets={270}
                   fireExtinguishers={160}
@@ -1201,13 +1353,13 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
         </div>
       )}
 
-      {/* COLLAPSED HUD PILL (When user collapses the drawer to maximize 3D real estate) */}
+      {/* COLLAPSED HUD PILL */}
       {!hudOpen && (
         <button
           onClick={() => setHudOpen(true)}
-          className="absolute right-4 top-28 z-20 flex items-center gap-2 bg-[#0B132B]/90 backdrop-blur-xl px-3.5 py-2 rounded-xl border border-slate-800 shadow-2xl hover:border-cyan-500/60 transition-all text-xs text-slate-200"
+          className="absolute right-4 top-28 z-20 flex items-center gap-2 bg-[#0B132B]/90 backdrop-blur-xl px-3.5 py-2 rounded-xl border border-slate-800 shadow-2xl hover:border-[#BFF549]/60 transition-all text-xs text-slate-200"
         >
-          <Activity className="w-4 h-4 text-cyan-400" />
+          <Activity className="w-4 h-4 text-[#BFF549]" />
           <span className="font-semibold">Inspector & Telemetry (355 PCs • 19,754 kWh)</span>
           <ChevronLeft className="w-4 h-4 text-slate-400 ml-1" />
         </button>
@@ -1223,19 +1375,19 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({ onRoomSelect, di
             setSelectedRoomForModal(null);
           }}
           onReportIncident={(rmId) => {
-            alert(`Emergency Work Order dispatched for ${rmId}. High-priority technician en route.`);
+            showToast(`Emergency Work Order WO-2026-08 dispatched for ${rmId}. Technician Rajesh Kumar assigned (ETA: 4 mins).`, 'alert');
             setSelectedRoomForModal(null);
           }}
         />
       )}
 
-      {/* Space Reservation & Booking Modal (Reference Image 3) */}
+      {/* Space Reservation & Booking Modal */}
       <SpaceReservationModal
         room={selectedRoomForBooking}
         isOpen={selectedRoomForBooking !== null}
         onClose={() => setSelectedRoomForBooking(null)}
         onConfirmBooking={(b) => {
-          console.log('[Campus3DViewer] Space reservation confirmed:', b);
+          showToast(`Space reserved successfully: ${selectedRoomForBooking?.name} for ${b.organizer}. Pin: 8492.`);
         }}
       />
     </div>

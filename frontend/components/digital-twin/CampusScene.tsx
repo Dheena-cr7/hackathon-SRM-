@@ -28,6 +28,15 @@ export default function CampusScene({
   return (
     <div className="relative w-full h-[740px] rounded-2xl overflow-hidden bg-[#070B14] border border-white/10 shadow-glaido-card">
       <Campus3DViewer
+        onSelectBuilding={(bldg) => {
+          if (onSelectBuilding) {
+            onSelectBuilding({
+              ...bldg,
+              operational_status: bldg.status,
+              active_incidents_count: bldg.id === 'academic' && isDisrupted ? 1 : 0
+            });
+          }
+        }}
         onRoomSelect={(room) => {
           if (onRoomSelect) onRoomSelect(room);
           if (onSelectBuilding) {

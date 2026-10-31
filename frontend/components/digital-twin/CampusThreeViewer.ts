@@ -4,7 +4,7 @@
  * Built with Three.js (v0.173+)
  * Supports cinematic parabolic drone flyovers between campus blocks,
  * multi-zone visual filtering, glowing floor slab highlighting (The Solenne style),
- * automated cinematic tour sequence, and 3D furnished room inspections.
+ * automated cinematic tour sequence with step scrubbing, and 3D furnished room inspections.
  */
 
 import * as THREE from 'three';
@@ -77,6 +77,13 @@ export interface CampusMetadata {
   safety_assets: SafetyAssetRecord[];
 }
 
+export interface TourStepItem {
+  mode: ViewerMode;
+  bldg: string | null;
+  floor?: string;
+  label: string;
+}
+
 export interface CampusThreeViewerOptions {
   container: HTMLElement;
   assetBasePath?: string;
@@ -84,8 +91,10 @@ export interface CampusThreeViewerOptions {
   onSelectBuilding?: (building: BuildingRecord | null) => void;
   onSelectRoom?: (room: RoomRecord | null) => void;
   onSelectAsset?: (asset: SafetyAssetRecord | null) => void;
+  onSelectLevel?: (floorLevel: string) => void;
   onModeChange?: (mode: ViewerMode) => void;
   onLoadingChange?: (loading: boolean, label?: string) => void;
+  onCameraChange?: () => void;
   onError?: (error: Error) => void;
 }
 
@@ -117,8 +126,12 @@ export class CampusThreeViewer {
 
   private raycaster: THREE.Raycaster = new THREE.Raycaster();
   private mouse: THREE.Vector2 = new THREE.Vector2(-999, -999);
+  private pointerDownPos: { x: number; y: number } = { x: 0, y: 0 };
 
   private animFrameId: number | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+
+  // Camera tweening
   private isTweening: boolean = false;
   private camStartPos: THREE.Vector3 = new THREE.Vector3();
   private camEndPos: THREE.Vector3 = new THREE.Vector3();
@@ -128,8 +141,22 @@ export class CampusThreeViewer {
   private tweenDuration: number = 1.0;
   private tweenArcHeight: number = 0;
 
+  // Cinematic Tour Engine
+  public tourSequence: TourStepItem[] = [
+    { mode: 'campus', bldg: 'academic', label: 'Academic & AI Computing Center' },
+    { mode: 'building', bldg: 'academic', label: '3D Stacked Cutaway (3 Levels)' },
+    { mode: 'floor', bldg: 'academic', floor: '0', label: 'Level 00: Welcome Commons & Auditorium' },
+    { mode: 'floor', bldg: 'academic', floor: '1', label: 'Level 01: AI Deep Learning Lab' },
+    { mode: 'floor', bldg: 'academic', floor: '2', label: 'Level 02: Neural Vision & Rm 204 Outage' },
+    { mode: 'campus', bldg: 'innovation', label: 'AI Innovation Research Hub' },
+    { mode: 'campus', bldg: 'engineering', label: 'Engineering & Robotics Hall' },
+    { mode: 'campus', bldg: null, label: 'Campus Aerial Panoramic View' }
+  ];
+  public tourStepIndex: number = 0;
+  public isTouring: boolean = false;
+  public isTourPaused: boolean = false;
   private tourInterval: any = null;
-  private tourStep: number = 0;
+  private tourStepCallback?: (stepIndex: number, totalSteps: number, label: string) => void;
 
   private callbacks: Partial<CampusThreeViewerOptions>;
 
@@ -170,6 +197,10 @@ export class CampusThreeViewer {
     this.controls.minDistance = 4;
     this.controls.maxDistance = 250;
     this.controls.target.set(0, 4, 0);
+
+    this.controls.addEventListener('change', () => {
+      this.callbacks.onCameraChange?.();
+    });
 
     // 5. Lighting Rig
     this.setupLighting();
@@ -302,26 +333,44 @@ export class CampusThreeViewer {
     while (this.slabGroup.children.length > 0) {
       this.slabGroup.remove(this.slabGroup.children[0]);
     }
-    // Strictly only display floor slab volume on campus exterior aerial mode!
-    if (floorLevel === null || this.mode !== 'campus') return;
+    if (floorLevel === null) return;
 
-    const bldg = this.metadata?.buildings.find((b) => b.id === buildingId);
-    const [bx, by, bz] = bldg ? bldg.center : [-16, 0, 2];
-    const width = bldg?.bounds?.width || 32;
-    const depth = bldg?.bounds?.depth || 26;
-    const slabY = by + (floorLevel * 4.2) + 2.1;
+    let bx = 0;
+    let slabY = 0;
+    let bz = 0;
+    let width = 32;
+    let depth = 26;
+
+    if (this.mode === 'campus') {
+      const bldg = this.metadata?.buildings.find((b) => b.id === buildingId);
+      const center = bldg ? bldg.center : [-16, 0, 2];
+      bx = center[0];
+      slabY = center[1] + (floorLevel * 4.2) + 2.1;
+      bz = center[2];
+      width = bldg?.bounds?.width || 32;
+      depth = bldg?.bounds?.depth || 26;
+    } else if (this.mode === 'building') {
+      // Cutaway local Y levels: Floor 0: -4.5, Floor 1: 0, Floor 2: 4.5
+      bx = 0;
+      slabY = floorLevel === 0 ? -4.5 : floorLevel === 1 ? 0 : 4.5;
+      bz = 0;
+      width = 33;
+      depth = 27;
+    } else {
+      return;
+    }
 
     // Glowing translucent volume
     const geo = new THREE.BoxGeometry(width + 0.8, 3.8, depth + 0.8);
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xF59E0B, // Golden amber glow matching reference
+      color: 0xF59E0B, // Golden amber glow
       transparent: true,
       opacity: 0.22,
     });
     const slab = new THREE.Mesh(geo, mat);
     slab.position.set(bx, slabY, bz);
 
-    // Clean perimeter border without diagonal cross rails
+    // Clean perimeter border
     const wireGeo = new THREE.EdgesGeometry(geo);
     const wireMat = new THREE.LineBasicMaterial({
       color: 0xFBBF24,
@@ -350,46 +399,74 @@ export class CampusThreeViewer {
   }
 
   // -------------------------------------------------------------
-  // Automated Cinematic Tour Sequence
+  // Automated Cinematic Tour Sequence with Step Navigation
   // -------------------------------------------------------------
-  public startCinematicTour(onStepChange?: (stepName: string) => void): void {
+  public startCinematicTour(onStepChange?: (stepIndex: number, totalSteps: number, stepName: string) => void): void {
     this.stopCinematicTour();
-    const tourSequence = [
-      { mode: 'campus', bldg: 'academic', label: 'Academic & AI Computing Center' },
-      { mode: 'building', bldg: 'academic', label: '3D Stacked Cutaway' },
-      { mode: 'floor', bldg: 'academic', floor: '1', label: 'Level 01: AI Vision Lab' },
-      { mode: 'floor', bldg: 'academic', floor: '2', label: 'Level 02: Neural Lab & Senate' },
-      { mode: 'campus', bldg: 'innovation', label: 'AI Innovation Research Hub' },
-      { mode: 'campus', bldg: 'engineering', label: 'Engineering & Robotics Hall' },
-      { mode: 'campus', bldg: null, label: 'Campus Aerial Overview' }
-    ];
+    this.isTouring = true;
+    this.isTourPaused = false;
+    this.tourStepCallback = onStepChange;
+    this.tourStepIndex = 0;
 
-    this.tourStep = 0;
-    const runNext = async () => {
-      const current = tourSequence[this.tourStep];
-      onStepChange?.(current.label);
-      if (current.mode === 'campus') {
-        if (current.bldg) {
-          await this.flyToBuilding(current.bldg);
-        } else {
-          await this.setMode('campus');
-        }
-      } else if (current.mode === 'building') {
-        await this.setMode('building');
-      } else if (current.mode === 'floor') {
-        await this.setMode('floor', 'academic', current.floor);
+    this.executeTourStep(this.tourStepIndex);
+
+    this.tourInterval = setInterval(() => {
+      if (!this.isTourPaused) {
+        this.tourStepIndex = (this.tourStepIndex + 1) % this.tourSequence.length;
+        this.executeTourStep(this.tourStepIndex);
       }
-      this.tourStep = (this.tourStep + 1) % tourSequence.length;
-    };
+    }, 5500);
+  }
 
-    runNext();
-    this.tourInterval = setInterval(runNext, 5000);
+  public pauseCinematicTour(): void {
+    this.isTourPaused = true;
+  }
+
+  public resumeCinematicTour(onStepChange?: (stepIndex: number, totalSteps: number, stepName: string) => void): void {
+    if (onStepChange) this.tourStepCallback = onStepChange;
+    this.isTourPaused = false;
+  }
+
+  public nextTourStep(): void {
+    this.tourStepIndex = (this.tourStepIndex + 1) % this.tourSequence.length;
+    this.executeTourStep(this.tourStepIndex);
+  }
+
+  public prevTourStep(): void {
+    this.tourStepIndex = (this.tourStepIndex - 1 + this.tourSequence.length) % this.tourSequence.length;
+    this.executeTourStep(this.tourStepIndex);
+  }
+
+  public goToTourStep(index: number): void {
+    if (index >= 0 && index < this.tourSequence.length) {
+      this.tourStepIndex = index;
+      this.executeTourStep(this.tourStepIndex);
+    }
   }
 
   public stopCinematicTour(): void {
+    this.isTouring = false;
+    this.isTourPaused = false;
     if (this.tourInterval) {
       clearInterval(this.tourInterval);
       this.tourInterval = null;
+    }
+  }
+
+  private async executeTourStep(index: number): Promise<void> {
+    const current = this.tourSequence[index];
+    this.tourStepCallback?.(index, this.tourSequence.length, current.label);
+
+    if (current.mode === 'campus') {
+      if (current.bldg) {
+        await this.flyToBuilding(current.bldg);
+      } else {
+        await this.setMode('campus');
+      }
+    } else if (current.mode === 'building') {
+      await this.setMode('building');
+    } else if (current.mode === 'floor') {
+      await this.setMode('floor', 'academic', current.floor || '0');
     }
   }
 
@@ -413,6 +490,14 @@ export class CampusThreeViewer {
             if ((child as THREE.Mesh).isMesh) {
               child.castShadow = true;
               child.receiveShadow = true;
+              const mesh = child as THREE.Mesh;
+              if (mesh.material) {
+                if (Array.isArray(mesh.material)) {
+                  mesh.material.forEach((m) => { m.side = THREE.DoubleSide; });
+                } else {
+                  mesh.material.side = THREE.DoubleSide;
+                }
+              }
             }
           });
           this.modelCache.set(url, model);
@@ -444,20 +529,51 @@ export class CampusThreeViewer {
     this.clearActiveModel();
     try {
       const model = await this.loadGLB('campus_overview.glb');
+      this.tagCampusBuildings(model);
       this.activeModelGroup.add(model);
     } catch (e) {
       console.error('[CampusThreeViewer] Campus model failed to load:', e);
     }
   }
 
+  private tagCampusBuildings(group: THREE.Group): void {
+    const knownIds = ['academic', 'innovation', 'engineering', 'library', 'auditorium', 'administration', 'sports'];
+    group.traverse((child) => {
+      for (const id of knownIds) {
+        if (child.name === id || child.name.startsWith(id + '_') || child.name.toLowerCase().includes(id)) {
+          child.userData.buildingId = id;
+          child.traverse((desc) => {
+            desc.userData.buildingId = id;
+          });
+        }
+      }
+    });
+  }
+
   private async loadAcademicCutaway(): Promise<void> {
     this.clearActiveModel();
     try {
       const model = await this.loadGLB('academic_building_cutaway.glb');
+      this.tagCutawayLevels(model);
       this.activeModelGroup.add(model);
     } catch (e) {
       console.error('[CampusThreeViewer] Building cutaway model failed to load:', e);
     }
+  }
+
+  private tagCutawayLevels(group: THREE.Group): void {
+    group.traverse((child) => {
+      if (child.name === 'LEVEL_00' || child.name.includes('00')) {
+        child.userData.floor = '0';
+        child.traverse((desc) => { desc.userData.floor = '0'; });
+      } else if (child.name === 'LEVEL_01' || child.name.includes('01')) {
+        child.userData.floor = '1';
+        child.traverse((desc) => { desc.userData.floor = '1'; });
+      } else if (child.name === 'LEVEL_02' || child.name.includes('02')) {
+        child.userData.floor = '2';
+        child.traverse((desc) => { desc.userData.floor = '2'; });
+      }
+    });
   }
 
   private async loadAcademicFloor(floorNumber: string): Promise<void> {
@@ -465,10 +581,23 @@ export class CampusThreeViewer {
     try {
       const filename = `academic_floor_${floorNumber}.glb`;
       const model = await this.loadGLB(filename);
+      this.tagFloorRooms(model, floorNumber);
       this.activeModelGroup.add(model);
     } catch (e) {
       console.error('[CampusThreeViewer] Floor model failed to load:', e);
     }
+  }
+
+  private tagFloorRooms(group: THREE.Group, floorNumber: string): void {
+    const rooms = this.metadata?.rooms?.filter((r) => r.floor === floorNumber) || [];
+    group.traverse((child) => {
+      for (const rm of rooms) {
+        if (child.name === rm.id || child.name === `GLOW_${rm.id}`) {
+          child.userData.roomId = rm.id;
+          child.traverse((desc) => { desc.userData.roomId = rm.id; });
+        }
+      }
+    });
   }
 
   public async flyToBuilding(buildingId: string): Promise<void> {
@@ -513,7 +642,6 @@ export class CampusThreeViewer {
   public reverseCameraAngle(duration: number = 1.0): void {
     const target = this.controls.target.clone();
     const offset = this.camera.position.clone().sub(target);
-    // Invert horizontal direction (X and Z) while preserving elevation Y and distance
     const reversedPos = new THREE.Vector3(target.x - offset.x, this.camera.position.y, target.z - offset.z);
     this.tweenCamera(reversedPos, target, duration, 2);
   }
@@ -531,25 +659,30 @@ export class CampusThreeViewer {
     room.hvac_status = newState ? 'DEGRADED' : 'NORMAL';
     room.temperature_c = newState ? 24.6 : 21.0;
 
-    // Dynamically update the 3D meshes in activeModelGroup
     const activeColor = newState ? 0xEF4444 : 0x10B981; // Red if disrupted, Emerald if restored
     this.activeModelGroup.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
         if (mesh.name === `GLOW_${roomId}` || mesh.name === roomId) {
           if (mesh.material && !Array.isArray(mesh.material)) {
-            (mesh.material as THREE.MeshBasicMaterial).color?.setHex(activeColor);
+            const m = mesh.material as any;
+            m.color?.setHex(activeColor);
+            if (m.emissive) m.emissive.setHex(activeColor);
           }
         }
         if (mesh.name === 'SCREEN_DISRUPTED_204' || mesh.name === 'SCREEN_NOMINAL') {
-          // If restored, illuminate the screen cyan/blue!
           if (mesh.material && !Array.isArray(mesh.material)) {
-            (mesh.material as THREE.MeshBasicMaterial).color?.setHex(newState ? 0x0F172A : 0x06B6D4);
+            const m = mesh.material as any;
+            const scrColor = newState ? 0x1E1B4B : 0x06B6D4;
+            m.color?.setHex(scrColor);
+            if (m.emissive) m.emissive.setHex(scrColor);
           }
         }
-        if (mesh.name === 'LED_DISRUPTED_204') {
+        if (mesh.name === 'LED_DISRUPTED_204' || mesh.name === 'PANEL_DISRUPTED_204') {
           if (mesh.material && !Array.isArray(mesh.material)) {
-            (mesh.material as THREE.MeshBasicMaterial).color?.setHex(newState ? 0xEF4444 : 0x10B981);
+            const m = mesh.material as any;
+            m.color?.setHex(activeColor);
+            if (m.emissive) m.emissive.setHex(activeColor);
           }
         }
       }
@@ -575,7 +708,6 @@ export class CampusThreeViewer {
     const zoneMeta = this.metadata.zones?.find((z) => z.id === zoneId);
     let colorHex = zoneMeta?.color ? parseInt(zoneMeta.color.replace('#', '0x'), 16) : 0x06B6D4;
 
-    // If INCIDENT zone has been restored/reversed to nominal, use emerald green!
     if (zoneId === 'INCIDENT') {
       const rm204 = this.metadata.rooms.find((r) => r.id === 'ROOM_ACAD_204');
       if (rm204 && !rm204.disrupted && rm204.power_status === 'NORMAL') {
@@ -588,7 +720,6 @@ export class CampusThreeViewer {
         const isTarget = targetRooms.some((r) => r.id === child.name);
         if (isTarget) {
           const mesh = child as THREE.Mesh;
-          // Clean 4-edge floor boundary outline (grounded, no diagonal cross-rails)
           const wireGeo = new THREE.EdgesGeometry(mesh.geometry);
           const wireMat = new THREE.LineBasicMaterial({
             color: colorHex,
@@ -598,11 +729,10 @@ export class CampusThreeViewer {
           });
           const wire = new THREE.LineSegments(wireGeo, wireMat);
           wire.position.copy(mesh.getWorldPosition(new THREE.Vector3()));
-          wire.position.y += 0.02; // Grounded right along the floor surface
+          wire.position.y += 0.02;
           wire.quaternion.copy(mesh.getWorldQuaternion(new THREE.Quaternion()));
           wire.scale.copy(mesh.getWorldScale(new THREE.Vector3()));
 
-          // Soft translucent ground glow plane
           const fillMat = new THREE.MeshBasicMaterial({
             color: colorHex,
             transparent: true,
@@ -648,9 +778,22 @@ export class CampusThreeViewer {
 
   private createAssetPin(asset: SafetyAssetRecord): THREE.Group {
     const grp = new THREE.Group();
-    // In floor mode, all floor meshes are at ground level y = 0. Pin sits at y = 0.4 on floor!
-    const posY = this.mode === 'floor' ? 0.4 : asset.position[1];
-    grp.position.set(asset.position[0], posY, asset.position[2]);
+    let posX = asset.position[0];
+    let posY = 0.6;
+    let posZ = asset.position[2];
+
+    if (this.mode === 'floor') {
+      posY = 0.6;
+    } else if (this.mode === 'building') {
+      posY = asset.floor === '0' ? -3.8 : asset.floor === '1' ? 0.6 : 5.0;
+    } else {
+      // Campus overview mode: anchor to academic building center [-16, 0, 2]
+      posX = -16 + asset.position[0] * 0.4;
+      posY = 6 + parseInt(asset.floor, 10) * 4;
+      posZ = 2 + asset.position[2] * 0.4;
+    }
+
+    grp.position.set(posX, posY, posZ);
     grp.name = `MARKER_${asset.id}`;
     grp.userData = { isAssetMarker: true, asset };
 
@@ -662,7 +805,7 @@ export class CampusThreeViewer {
     const beaconMat = new THREE.MeshStandardMaterial({
       color: pinColor,
       emissive: pinColor,
-      emissiveIntensity: 0.7,
+      emissiveIntensity: 0.8,
       roughness: 0.2
     });
     const beacon = new THREE.Mesh(beaconGeo, beaconMat);
@@ -679,24 +822,75 @@ export class CampusThreeViewer {
 
   private bindEvents(): void {
     const dom = this.renderer.domElement;
+    dom.addEventListener('pointerdown', this.onPointerDown.bind(this));
     dom.addEventListener('pointermove', this.onPointerMove.bind(this));
     dom.addEventListener('click', this.onPointerClick.bind(this));
     window.addEventListener('resize', this.onWindowResize.bind(this));
+
+    if (typeof ResizeObserver !== 'undefined' && this.container) {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.onWindowResize();
+      });
+      this.resizeObserver.observe(this.container);
+    }
+  }
+
+  private onPointerDown(e: MouseEvent): void {
+    this.pointerDownPos = { x: e.clientX, y: e.clientY };
   }
 
   private onPointerMove(e: MouseEvent): void {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // Hover detection for interactive pointer feedback
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    let isHovering = false;
+
+    if (this.showSafetyAssets) {
+      const markerHits = this.raycaster.intersectObjects(this.markerGroup.children, true);
+      if (markerHits.length > 0) isHovering = true;
+    }
+
+    if (!isHovering) {
+      const hits = this.raycaster.intersectObjects(this.activeModelGroup.children, true);
+      if (hits.length > 0) {
+        if (this.mode === 'campus') {
+          for (const h of hits) {
+            let cur: THREE.Object3D | null = h.object;
+            while (cur && cur !== this.activeModelGroup) {
+              if (cur.userData?.buildingId) {
+                isHovering = true;
+                break;
+              }
+              cur = cur.parent;
+            }
+            if (isHovering) break;
+          }
+        } else if (this.mode === 'building' || this.mode === 'floor') {
+          isHovering = true;
+        }
+      }
+    }
+
+    this.renderer.domElement.style.cursor = isHovering ? 'pointer' : 'grab';
   }
 
   private onPointerClick(e: MouseEvent): void {
+    const dist = Math.hypot(e.clientX - this.pointerDownPos.x, e.clientY - this.pointerDownPos.y);
+    if (dist > 6) {
+      // User dragged to orbit/pan - do not fire accidental click selection
+      return;
+    }
+
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
+    // 1. Safety Asset Pin Selection
     if (this.showSafetyAssets) {
       const markerHits = this.raycaster.intersectObjects(this.markerGroup.children, true);
       if (markerHits.length > 0) {
@@ -711,42 +905,112 @@ export class CampusThreeViewer {
       }
     }
 
+    // 2. Active Model Hits
     const hits = this.raycaster.intersectObjects(this.activeModelGroup.children, true);
     if (hits.length === 0) return;
 
     if (this.mode === 'campus') {
-      let bldgHit = hits.find((h) => {
+      let bldgId: string | null = null;
+      for (const h of hits) {
         let cur: THREE.Object3D | null = h.object;
-        while (cur && cur !== this.activeModelGroup) {
-          if (cur.userData?.buildingId) return true;
-          cur = cur.parent;
-        }
-        return false;
-      });
-
-      if (bldgHit) {
-        let cur: THREE.Object3D | null = bldgHit.object;
-        let bldgId: string | null = null;
         while (cur && cur !== this.activeModelGroup) {
           if (cur.userData?.buildingId) {
             bldgId = cur.userData.buildingId;
             break;
           }
+          if (cur.name) {
+            const match = this.metadata?.buildings.find(b => b.id === cur?.name || cur?.name.startsWith(b.id + '_'));
+            if (match) {
+              bldgId = match.id;
+              break;
+            }
+          }
           cur = cur.parent;
         }
+        if (bldgId) break;
+      }
 
-        if (bldgId) {
-          this.flyToBuilding(bldgId);
+      if (bldgId) {
+        this.flyToBuilding(bldgId);
+      }
+    } else if (this.mode === 'building') {
+      // Cutaway click: detect floor level clicked
+      let resolvedFloor: string | null = null;
+      for (const h of hits) {
+        let cur: THREE.Object3D | null = h.object;
+        while (cur && cur !== this.activeModelGroup) {
+          if (cur.userData?.floor !== undefined) {
+            resolvedFloor = cur.userData.floor;
+            break;
+          }
+          if (cur.name && cur.name.startsWith('LEVEL_')) {
+            resolvedFloor = cur.name.replace('LEVEL_0', '').replace('LEVEL_', '');
+            break;
+          }
+          cur = cur.parent;
+        }
+        if (resolvedFloor) break;
+      }
+
+      if (!resolvedFloor && hits.length > 0) {
+        const y = hits[0].point.y;
+        if (y < -1.8) resolvedFloor = '0';
+        else if (y < 2.5) resolvedFloor = '1';
+        else resolvedFloor = '2';
+      }
+
+      if (resolvedFloor) {
+        this.callbacks.onSelectLevel?.(resolvedFloor);
+        this.setMode('floor', 'academic', resolvedFloor);
+      }
+    } else if (this.mode === 'floor') {
+      // Floor click: detect room
+      let resolvedRoomId: string | null = null;
+
+      for (const h of hits) {
+        let cur: THREE.Object3D | null = h.object;
+        while (cur && cur !== this.activeModelGroup) {
+          if (cur.userData?.roomId) {
+            resolvedRoomId = cur.userData.roomId;
+            break;
+          }
+          if (cur.name && cur.name.startsWith('ROOM_')) {
+            resolvedRoomId = cur.name;
+            break;
+          }
+          cur = cur.parent;
+        }
+        if (resolvedRoomId) break;
+      }
+
+      // Spatial quadrant fallback if clicked any furniture/wall
+      if (!resolvedRoomId && hits.length > 0) {
+        const pt = hits[0].point;
+        const fl = this.selectedFloor;
+        if (fl === '0') {
+          if (pt.x < 0 && pt.z >= 0) resolvedRoomId = 'ROOM_ACAD_001';
+          else if (pt.x < 0 && pt.z < 0) resolvedRoomId = 'ROOM_ACAD_002';
+          else if (pt.x >= 0 && pt.z < 0) resolvedRoomId = 'ROOM_ACAD_003';
+          else resolvedRoomId = 'ROOM_ACAD_004';
+        } else if (fl === '1') {
+          if (pt.x < 0 && pt.z < 0) resolvedRoomId = 'ROOM_ACAD_101';
+          else if (pt.x >= 0 && pt.z < 0) resolvedRoomId = 'ROOM_ACAD_102';
+          else if (pt.x < 0 && pt.z >= 0) resolvedRoomId = 'ROOM_ACAD_103';
+          else resolvedRoomId = 'ROOM_ACAD_104';
+        } else {
+          // Level 02
+          if (pt.x < 0 && pt.z < 0) resolvedRoomId = 'ROOM_ACAD_201';
+          else if (pt.x < 0 && pt.z >= 0) resolvedRoomId = 'ROOM_ACAD_202';
+          else if (pt.x >= 0 && pt.z >= 0) resolvedRoomId = 'ROOM_ACAD_203';
+          else resolvedRoomId = 'ROOM_ACAD_204';
         }
       }
-    } else if (this.mode === 'floor' || this.mode === 'building') {
-      const roomHit = hits.find((h) => h.object.name && h.object.name.startsWith('ROOM_'));
-      if (roomHit) {
-        const roomId = roomHit.object.name;
-        this.selectedRoomId = roomId;
-        const room = this.metadata?.rooms.find((r) => r.id === roomId) || null;
+
+      if (resolvedRoomId) {
+        this.selectedRoomId = resolvedRoomId;
+        const room = this.metadata?.rooms.find((r) => r.id === resolvedRoomId) || null;
         this.callbacks.onSelectRoom?.(room);
-        this.highlightObject(roomHit.object as THREE.Mesh, 0x06B6D4);
+        this.highlightRoomById(resolvedRoomId, resolvedRoomId === 'ROOM_ACAD_204' && room?.disrupted ? 0xEF4444 : 0x06B6D4);
 
         if (room?.camera_focus) {
           this.focusRoomCamera(room.camera_focus);
@@ -763,7 +1027,7 @@ export class CampusThreeViewer {
     this.activeModelGroup.traverse((child) => {
       let cur: THREE.Object3D | null = child;
       while (cur && cur !== this.activeModelGroup) {
-        if (cur.userData?.buildingId === buildingId) {
+        if (cur.userData?.buildingId === buildingId || cur.name === buildingId || cur.name.startsWith(buildingId + '_')) {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
             const wireGeo = new THREE.EdgesGeometry(mesh.geometry);
@@ -793,7 +1057,6 @@ export class CampusThreeViewer {
 
     if (!mesh.geometry) return;
 
-    // Clean boundary outline without diagonal cross rails
     const wireGeo = new THREE.EdgesGeometry(mesh.geometry);
     const wireMat = new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 });
     const wire = new THREE.LineSegments(wireGeo, wireMat);
@@ -805,11 +1068,29 @@ export class CampusThreeViewer {
   }
 
   public highlightRoomById(roomId: string, colorHex: number = 0x06B6D4): void {
+    let matched = false;
     this.activeModelGroup.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh && child.name === roomId) {
+      if ((child as THREE.Mesh).isMesh && (child.name === roomId || child.userData?.roomId === roomId)) {
         this.highlightObject(child as THREE.Mesh, colorHex);
+        matched = true;
       }
     });
+
+    if (!matched) {
+      // If room floor mesh wasn't found by exact name, place synthetic boundary box
+      const rm = this.metadata?.rooms?.find(r => r.id === roomId);
+      if (rm && rm.camera_focus) {
+        while (this.highlightGroup.children.length > 0) {
+          this.highlightGroup.remove(this.highlightGroup.children[0]);
+        }
+        const geo = new THREE.BoxGeometry(14, 0.2, 11);
+        const wireGeo = new THREE.EdgesGeometry(geo);
+        const wireMat = new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 });
+        const wire = new THREE.LineSegments(wireGeo, wireMat);
+        wire.position.set(rm.camera_focus[0], 0.05, rm.camera_focus[2]);
+        this.highlightGroup.add(wire);
+      }
+    }
   }
 
   public clearHighlight(): void {
@@ -856,8 +1137,8 @@ export class CampusThreeViewer {
     this.tweenCamera(camPos, target, 1.1, 3);
   }
 
-  private onWindowResize(): void {
-    if (!this.container) return;
+  public onWindowResize(): void {
+    if (!this.container || !this.renderer || !this.camera) return;
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
     if (width === 0 || height === 0) return;
@@ -888,6 +1169,7 @@ export class CampusThreeViewer {
 
         this.controls.target.lerpVectors(this.targetStartPos, this.targetEndPos, ease);
       }
+      this.callbacks.onCameraChange?.();
     }
 
     this.controls.update();
@@ -902,9 +1184,15 @@ export class CampusThreeViewer {
       this.animFrameId = null;
     }
 
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+
     window.removeEventListener('resize', this.onWindowResize);
     const dom = this.renderer?.domElement;
     if (dom) {
+      dom.removeEventListener('pointerdown', this.onPointerDown);
       dom.removeEventListener('pointermove', this.onPointerMove);
       dom.removeEventListener('click', this.onPointerClick);
       if (dom.parentElement) {
