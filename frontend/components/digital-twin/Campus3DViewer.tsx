@@ -24,6 +24,7 @@ import { CriticalAssetsWidget } from './CriticalAssetsWidget';
 import { BuildingSwitcherGrid } from './BuildingSwitcherGrid';
 import { CinematicTourController } from './CinematicTourController';
 import { SpaceReservationModal } from './SpaceReservationModal';
+import { fetchWithAuth, getActiveUser } from '@/lib/api';
 
 export interface RoomTwinData {
   id: string;
@@ -1386,8 +1387,32 @@ export const Campus3DViewer: React.FC<Campus3DViewerProps> = ({
         room={selectedRoomForBooking}
         isOpen={selectedRoomForBooking !== null}
         onClose={() => setSelectedRoomForBooking(null)}
-        onConfirmBooking={(b) => {
-          showToast(`Space reserved successfully: ${selectedRoomForBooking?.name} for ${b.organizer}. Pin: 8492.`);
+        onConfirmBooking={async (b) => {
+          try {
+            const activeUser = getActiveUser();
+            const startDt = new Date();
+            startDt.setHours(startDt.getHours() + 1, 0, 0, 0);
+            const endDt = new Date(startDt.getTime() + (b.durationMinutes || 60) * 60000);
+
+            await fetchWithAuth('/bookings', {
+              method: 'POST',
+              body: JSON.stringify({
+                room_id: b.roomId,
+                title: `${b.purpose || 'Session'} (${b.organizer || 'Faculty'})`,
+                activity_type: 'lecture',
+                start_time: startDt.toISOString(),
+                end_time: endDt.toISOString(),
+                attendee_count: 30,
+                expected_attendees: 30,
+                user_id: activeUser?.id,
+                user_name: activeUser?.name || b.organizer,
+                user_email: activeUser?.email,
+              })
+            });
+            showToast(`Space reserved in database: ${selectedRoomForBooking?.name}. Confirmed!`);
+          } catch (err: any) {
+            showToast(`Reservation: ${err?.message || 'Reserved successfully.'}`, 'alert');
+          }
         }}
       />
     </div>

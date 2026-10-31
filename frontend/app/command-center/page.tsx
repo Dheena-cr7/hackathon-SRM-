@@ -28,8 +28,36 @@ import CampusFallback2D from '@/components/digital-twin/CampusFallback2D';
 import { fetchWithAuth } from '@/lib/api';
 import RoleGuard from '@/components/RoleGuard';
 
+const BUILDING_MAP: Record<string, string> = {
+  'academic': 'BLD-TECH-01',
+  'ACAD-01': 'BLD-TECH-01',
+  'BLD-TECH-01': 'academic',
+  'TP': 'academic',
+  'engineering': 'BLD-ENG-02',
+  'ENG-01': 'BLD-ENG-02',
+  'BLD-ENG-02': 'engineering',
+  'MECH': 'engineering',
+  'library': 'BLD-LIB-01',
+  'LIB-01': 'BLD-LIB-01',
+  'BLD-LIB-01': 'library',
+  'LIB': 'library',
+  'auditorium': 'BLD-AUD-01',
+  'AUD-01': 'BLD-AUD-01',
+  'BLD-AUD-01': 'auditorium',
+  'AUD': 'auditorium',
+  'administration': 'BLD-ADM-01',
+  'ADM-01': 'BLD-ADM-01',
+  'BLD-ADM-01': 'administration',
+  'ADMIN': 'administration',
+  'sports': 'BLD-RES-01',
+  'SPT-01': 'BLD-RES-01',
+  'BLD-RES-01': 'sports',
+  'HOSTEL-A': 'sports',
+};
+
 export default function CommandCenterPage() {
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
+  const [fullscreen3D, setFullscreen3D] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<any | null>(null);
   const [buildings, setBuildings] = useState<any[]>([]);
   const [buildingStatusMap, setBuildingStatusMap] = useState<Record<string, string>>({});
@@ -82,7 +110,18 @@ export default function CommandCenterPage() {
   }, []);
 
   const handleSelectBuilding = (bldData: any) => {
-    const match = buildings.find(b => b.id === bldData.building_id || b.code === bldData.code);
+    const rawId = bldData.building_id || bldData.id || '';
+    const rawCode = bldData.code || '';
+    const mappedId = BUILDING_MAP[rawId] || BUILDING_MAP[rawCode] || rawId;
+
+    const match = buildings.find(b => 
+      b.id === rawId || 
+      b.id === mappedId || 
+      b.code === rawCode || 
+      b.code === BUILDING_MAP[rawCode] ||
+      (b.name && rawId && b.name.toLowerCase().includes(rawId.toLowerCase()))
+    );
+
     if (match) {
       setSelectedBuilding(match);
     } else {
@@ -142,6 +181,20 @@ export default function CommandCenterPage() {
 
           <button
             type="button"
+            onClick={() => setFullscreen3D(!fullscreen3D)}
+            className={`p-2 px-3 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors border cursor-pointer ${
+              fullscreen3D
+                ? 'bg-[#BFF549] text-black border-[#BFF549]'
+                : 'bg-[#1A1A1A] hover:bg-[#242424] border-white/[0.08] text-neutral-300 hover:text-white'
+            }`}
+            title="Toggle full width 3D canvas"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>{fullscreen3D ? 'Split Inspector' : 'Expand 3D'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={loadData}
             disabled={loading}
             className="p-2 px-3 bg-[#1A1A1A] hover:bg-[#242424] border border-white/[0.08] text-neutral-300 hover:text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors focus-ring cursor-pointer"
@@ -154,9 +207,9 @@ export default function CommandCenterPage() {
       </div>
 
       {/* Main Interactive Canvas & Inspector Grid */}
-      <div className={`grid grid-cols-1 ${viewMode === '3d' ? 'lg:grid-cols-1' : 'lg:grid-cols-12'} gap-6 items-start`}>
+      <div className={`grid grid-cols-1 ${fullscreen3D ? 'lg:grid-cols-1' : 'lg:grid-cols-12'} gap-6 items-start`}>
         {/* Left: The 3D Scene or 2D Fallback */}
-        <div className={`${viewMode === '3d' ? 'w-full' : 'lg:col-span-8'} space-y-3`}>
+        <div className={`${fullscreen3D ? 'w-full' : 'lg:col-span-8'} space-y-3`}>
           <div className="rounded-2xl overflow-hidden border border-white/[0.08] relative bg-[#0D0D0D] shadow-glaido-card">
             {viewMode === '3d' ? (
               <CampusScene
@@ -202,8 +255,8 @@ export default function CommandCenterPage() {
           </div>
         </div>
 
-        {/* Right: Facility Inspector Drawer (Visible in 2D Blueprint mode) */}
-        {viewMode !== '3d' && (
+        {/* Right: Facility Inspector Drawer (Synchronized with 3D Twin & 2D Site Plan) */}
+        {!fullscreen3D && (
           <div className="lg:col-span-4">
           {selectedBuilding ? (
             <div className="bg-[#1A1A1A] rounded-2xl border border-white/[0.08] p-5 space-y-5 shadow-glaido-card card-sheen">

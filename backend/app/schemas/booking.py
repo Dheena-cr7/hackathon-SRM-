@@ -13,6 +13,14 @@ class BookingCreate(BaseModel):
     start_time: datetime
     end_time: datetime
     attendee_count: int = 30
+    expected_attendees: Optional[int] = None
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_id: Optional[str] = None
+
+    def model_post_init(self, __context):
+        if self.expected_attendees is not None:
+            self.attendee_count = self.expected_attendees
 
 class RelocationProposal(BaseModel):
     alternative_room_id: str

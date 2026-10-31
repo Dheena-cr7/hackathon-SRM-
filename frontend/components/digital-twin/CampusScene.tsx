@@ -39,17 +39,6 @@ export default function CampusScene({
         }}
         onRoomSelect={(room) => {
           if (onRoomSelect) onRoomSelect(room);
-          if (onSelectBuilding) {
-            onSelectBuilding({
-              ...room,
-              name: room.room_number ? `Room ${room.room_number}` : room.room_type,
-              code: room.room_number || room.id,
-              status: room.has_active_outage ? 'disrupted' : 'normal',
-              building_id: 'academic',
-              total_floors: 3,
-              active_incidents_count: room.has_active_outage ? 1 : 0,
-            });
-          }
         }}
         disruptionTriggered={isDisrupted}
       />

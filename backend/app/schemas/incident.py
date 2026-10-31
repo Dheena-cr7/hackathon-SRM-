@@ -9,10 +9,11 @@ from pydantic import BaseModel, Field
 class NLPAnalyzeRequest(BaseModel):
     text: Optional[str] = None
     raw_text: Optional[str] = None
+    description: Optional[str] = None
 
     @property
     def query_text(self) -> str:
-        return (self.raw_text or self.text or "").strip()
+        return (self.raw_text or self.text or self.description or "").strip()
 
 class ExtractedEntities(BaseModel):
     building_code: Optional[str] = None

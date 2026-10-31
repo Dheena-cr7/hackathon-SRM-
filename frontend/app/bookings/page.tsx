@@ -27,7 +27,7 @@ export default function BookingsPage() {
 
   // New Booking Form State
   const [bookingTitle, setBookingTitle] = useState('Data Structures Lab Session');
-  const [roomId, setRoomId] = useState('');
+  const [roomId, setRoomId] = useState('RM-TP-204');
   const [startTime, setStartTime] = useState('2026-10-30T14:00');
   const [endTime, setEndTime] = useState('2026-10-30T17:00');
   const [attendees, setAttendees] = useState(40);
@@ -81,6 +81,7 @@ export default function BookingsPage() {
         user_email: activeUser?.email || 'manager@campus.edu',
         start_time: new Date(startTime).toISOString(),
         end_time: new Date(endTime).toISOString(),
+        attendee_count: Number(attendees),
         expected_attendees: Number(attendees),
       };
 
@@ -392,8 +393,14 @@ export default function BookingsPage() {
                 onChange={(e) => setRoomId(e.target.value)}
                 className="w-full bg-[#0D0D0D] border border-white/[0.10] rounded-xl px-2.5 py-2 text-xs text-white focus-ring cursor-pointer"
               >
-                <option value="room-tp-204">TP-204 (Tech Park 2nd Fl, Cap 60, Lab Equip)</option>
-                <option value="room-aud-01">AUD-01 (Main Auditorium, Cap 500, Keynote A/V)</option>
+                <option value="RM-TP-204">Tech Park B204 (Specialized Systems Lab - Cap 60)</option>
+                <option value="RM-TP-101">Tech Park 101 (Main Seminar Hall - Cap 80)</option>
+                <option value="RM-AUD-01">Auditorium Main Hall (Dr. T.P. Ganesan - Cap 120)</option>
+                <option value="RM-MECH-102">Mechanical & Civil Lab 102 (Cap 40)</option>
+                <option value="RM-LIB-101">Central Library Seminar L101 (Cap 40)</option>
+                <option value="ROOM_ACAD_101">Academic AI Supercluster Lab 101 (Cap 45)</option>
+                <option value="ROOM_ACAD_202">Academic Neural Vision AI Lab 202 (Cap 50)</option>
+                <option value="ROOM_ACAD_002">Academic Auditorium Hall A 002 (Cap 100)</option>
               </select>
             </div>
 

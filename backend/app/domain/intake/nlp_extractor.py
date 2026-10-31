@@ -21,12 +21,12 @@ CATEGORY_PATTERNS = {
 
 # Campus Dictionary & Aliases
 BUILDING_ALIASES = {
-    "BLD-TECH-01": [r"\btech park\b", r"\btp\b", r"\bacademic block\b", r"\btech block\b"],
-    "BLD-ENG-02": [r"\bmech(anical)? lab(s)?\b", r"\bcivil lab(s)?\b", r"\beng(ineering)? lab(s)?\b"],
-    "BLD-LIB-01": [r"\blibrary\b", r"\bcentral library\b"],
-    "BLD-AUD-01": [r"\bauditorium\b", r"\bganesan auditorium\b", r"\btp ganesan\b"],
-    "BLD-ADM-01": [r"\badministration\b", r"\badm\b", r"\bhq\b", r"\bregistrar\b"],
-    "BLD-RES-01": [r"\bhostel\b", r"\bblock a\b", r"\bresidence\b"],
+    "BLD-TECH-01": [r"\btech park\b", r"\btp\b", r"\bacademic block\b", r"\bacademic complex\b", r"\bacademic center\b", r"\bacademic\b", r"\btech block\b"],
+    "BLD-ENG-02": [r"\bmech(anical)? lab(s)?\b", r"\bcivil lab(s)?\b", r"\beng(ineering)? lab(s)?\b", r"\bengineering\b", r"\bengineering hall\b", r"\binnovation\b", r"\binnovation hub\b"],
+    "BLD-LIB-01": [r"\blibrary\b", r"\bcentral library\b", r"\bmain library\b"],
+    "BLD-AUD-01": [r"\bauditorium\b", r"\bganesan auditorium\b", r"\btp ganesan\b", r"\bgrand auditorium\b"],
+    "BLD-ADM-01": [r"\badministration\b", r"\badm\b", r"\bhq\b", r"\bregistrar\b", r"\badmin building\b"],
+    "BLD-RES-01": [r"\bhostel\b", r"\bblock a\b", r"\bresidence\b", r"\bsports\b", r"\bsports arena\b"],
 }
 
 BUILDING_NAMES = {

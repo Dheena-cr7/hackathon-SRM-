@@ -27,7 +27,19 @@ class BookingService:
         # 1. Verify Room Exists and is Operational
         room = await db.get(Room, data.room_id)
         if not room:
-            raise ValueError(f"Room with id '{data.room_id}' not found.")
+            clean_search = data.room_id.replace("room-", "").replace("RM-", "").replace("room_", "").upper()
+            res = await db.execute(
+                select(Room).where(
+                    or_(
+                        Room.id.ilike(f"%{clean_search}%"),
+                        Room.room_number.ilike(f"%{clean_search}%")
+                    )
+                )
+            )
+            room = res.scalars().first()
+            if not room:
+                raise ValueError(f"Room with id '{data.room_id}' not found.")
+            data.room_id = room.id
         if not room.is_operational:
             raise RoomNotOperationalError(f"Room '{room.room_number}' is currently out of service due to maintenance or active incidents.")
 

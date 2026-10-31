@@ -230,9 +230,11 @@ def run_all_checks():
     print("\n--- 5. Room Bookings & Anti-Collision Engine Buttons ---")
     import time
     epoch = int(time.time())
-    hour = 8 + (epoch % 12)
-    start_dt = f"2026-12-10T{hour:02d}:00:00Z"
-    end_dt = f"2026-12-10T{hour + 1:02d}:00:00Z"
+    day = 1 + (epoch % 27)
+    hour = 8 + (epoch % 10)
+    minute = (epoch % 60)
+    start_dt = f"2027-01-{day:02d}T{hour:02d}:{minute:02d}:00Z"
+    end_dt = f"2027-01-{day:02d}T{hour+1:02d}:{minute:02d}:00Z"
 
     # Create booking button
     bk_status, bk_body = post_json(

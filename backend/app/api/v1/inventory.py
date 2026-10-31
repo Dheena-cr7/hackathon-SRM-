@@ -22,6 +22,7 @@ router = APIRouter(prefix="/inventory", tags=["Inventory & Procurement"])
 @router.get("", response_model=List[InventoryItemResponse])
 @router.get("/", response_model=List[InventoryItemResponse])
 @router.get("/items", response_model=List[InventoryItemResponse])
+@router.get("/parts", response_model=List[InventoryItemResponse])
 async def list_items(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
