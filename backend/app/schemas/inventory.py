@@ -6,6 +6,16 @@ from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+class InventoryItemCreate(BaseModel):
+    sku: Optional[str] = None
+    name: str
+    category: str = "electrical"  # electrical, hvac, plumbing, it_av, safety, general
+    quantity_on_hand: int = Field(default=10, ge=0)
+    quantity_reserved: int = Field(default=0, ge=0)
+    reorder_threshold: int = Field(default=5, ge=0)
+    unit_cost: float = Field(default=25.0, ge=0.0)
+    location: Optional[str] = "Central Depot"
+
 class InventoryItemResponse(BaseModel):
     id: str
     sku: str

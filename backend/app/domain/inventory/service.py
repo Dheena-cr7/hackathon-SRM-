@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from backend.app.models.inventory import InventoryItem, PartsReservation
 from backend.app.models.audit import AuditLog
-from backend.app.schemas.inventory import PartsReservationRequest, InventoryItemResponse
+from backend.app.schemas.inventory import PartsReservationRequest, InventoryItemResponse, InventoryItemCreate
 from backend.app.core.events import event_bus
 
 class InsufficientStockError(Exception):
@@ -34,6 +34,53 @@ class InventoryService:
             )
             for item in items
         ]
+
+    @staticmethod
+    async def create_item(db: AsyncSession, data: InventoryItemCreate, actor_id: str) -> InventoryItemResponse:
+        import uuid
+        sku = data.sku.strip() if data.sku and data.sku.strip() else f"SKU-{data.category[:3].upper()}-{uuid.uuid4().hex[:4].upper()}"
+        item = InventoryItem(
+            sku=sku,
+            name=data.name.strip(),
+            category=data.category,
+            quantity_on_hand=data.quantity_on_hand,
+            quantity_reserved=data.quantity_reserved,
+            reorder_threshold=data.reorder_threshold,
+            unit_cost=data.unit_cost
+        )
+        db.add(item)
+        await db.flush()
+
+        audit = AuditLog(
+            event_type="INVENTORY_ITEM_CREATED",
+            actor_id=actor_id,
+            entity_type="inventory_item",
+            entity_id=item.id,
+            details={"sku": item.sku, "name": item.name, "initial_quantity": item.quantity_on_hand}
+        )
+        db.add(audit)
+        await db.commit()
+        await db.refresh(item)
+
+        await event_bus.publish("InventoryItemCreated", {
+            "item_id": item.id,
+            "sku": item.sku,
+            "name": item.name,
+            "quantity_on_hand": item.quantity_on_hand
+        })
+
+        return InventoryItemResponse(
+            id=item.id,
+            sku=item.sku,
+            name=item.name,
+            category=item.category,
+            quantity_on_hand=item.quantity_on_hand,
+            quantity_reserved=item.quantity_reserved,
+            available_stock=item.quantity_on_hand - item.quantity_reserved,
+            reorder_threshold=item.reorder_threshold,
+            unit_cost=item.unit_cost,
+            location=data.location or "Central Depot"
+        )
 
     @staticmethod
     async def reserve_parts(db: AsyncSession, actor_id: str, data: PartsReservationRequest) -> PartsReservation:

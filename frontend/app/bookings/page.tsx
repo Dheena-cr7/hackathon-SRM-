@@ -26,14 +26,38 @@ export default function BookingsPage() {
   const [loading, setLoading] = useState(true);
 
   // New Booking Form State
+  const getTodayISO = () => new Date().toISOString().split('T')[0];
   const [bookingTitle, setBookingTitle] = useState('Data Structures Lab Session');
   const [roomId, setRoomId] = useState('RM-TP-204');
-  const [startTime, setStartTime] = useState('2026-10-30T14:00');
-  const [endTime, setEndTime] = useState('2026-10-30T17:00');
+  const [startDate, setStartDate] = useState(getTodayISO());
+  const [startTime, setStartTime] = useState('10:00');
+  const [endDate, setEndDate] = useState(getTodayISO());
+  const [endTime, setEndTime] = useState('13:00');
   const [attendees, setAttendees] = useState(40);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
+
+  // Quick preset helpers
+  const setDatePreset = (daysAhead: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysAhead);
+    const dateStr = d.toISOString().split('T')[0];
+    setStartDate(dateStr);
+    setEndDate(dateStr);
+  };
+
+  const setDurationPreset = (hours: number) => {
+    try {
+      const [h, m] = startTime.split(':').map(Number);
+      const endH = (h + hours) % 24;
+      const endHStr = String(endH).padStart(2, '0');
+      const endMStr = String(m || 0).padStart(2, '0');
+      setEndTime(`${endHStr}:${endMStr}`);
+    } catch {
+      setEndTime('13:00');
+    }
+  };
 
   // Disruption Analyzer State
   const [disruptedRoomId, setDisruptedRoomId] = useState('RM-TP-204');
@@ -72,6 +96,18 @@ export default function BookingsPage() {
     setBookingSuccess(null);
 
     try {
+      const startIso = `${startDate}T${startTime.length === 5 ? startTime + ':00' : startTime}`;
+      const endIso = `${endDate}T${endTime.length === 5 ? endTime + ':00' : endTime}`;
+      const startDateTime = new Date(startIso);
+      const endDateTime = new Date(endIso);
+
+      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+        throw new Error('Please select valid start and end dates and times.');
+      }
+      if (endDateTime <= startDateTime) {
+        throw new Error('End date and time must be later than start date and time.');
+      }
+
       const activeUser = getActiveUser();
       const payload = {
         title: bookingTitle,
@@ -79,8 +115,8 @@ export default function BookingsPage() {
         user_id: activeUser?.id || 'usr-default',
         user_name: activeUser?.name || 'Department Officer',
         user_email: activeUser?.email || 'manager@campus.edu',
-        start_time: new Date(startTime).toISOString(),
-        end_time: new Date(endTime).toISOString(),
+        start_time: startDateTime.toISOString(),
+        end_time: endDateTime.toISOString(),
         attendee_count: Number(attendees),
         expected_attendees: Number(attendees),
       };
@@ -104,12 +140,14 @@ export default function BookingsPage() {
     setAnalyzingDisruption(true);
     setRelocationSuccess(null);
     try {
+      const startIso = `${startDate}T${startTime.length === 5 ? startTime + ':00' : startTime}`;
+      const endIso = `${endDate}T${endTime.length === 5 ? endTime + ':00' : endTime}`;
       const result = await fetchWithAuth('/bookings/disruptions/analyze', {
         method: 'POST',
         body: JSON.stringify({
           compromised_room_id: disruptedRoomId,
-          start_time: new Date(startTime).toISOString(),
-          end_time: new Date(endTime).toISOString(),
+          start_time: new Date(startIso).toISOString(),
+          end_time: new Date(endIso).toISOString(),
         }),
       });
       setDisruptionResult(result);
@@ -325,17 +363,21 @@ export default function BookingsPage() {
                   </span>
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-neutral-400 border-t border-white/[0.06] pt-2.5">
-                  <div className="flex items-center space-x-1.5 font-mono">
-                    <Clock className="w-3.5 h-3.5 text-neutral-500" />
-                    <span>{new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(b.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-neutral-400 border-t border-white/[0.06] pt-2.5">
+                  <div className="sm:col-span-2 flex items-center space-x-1.5 font-mono text-neutral-300">
+                    <Clock className="w-3.5 h-3.5 text-[#BFF549] shrink-0" />
+                    <span>
+                      {new Date(b.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} • {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(b.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </div>
-                  <div className="flex items-center space-x-1.5">
-                    <Users className="w-3.5 h-3.5 text-neutral-500" />
-                    <span>{b.expected_attendees} Attendees</span>
-                  </div>
-                  <div className="text-right sm:col-span-1 col-span-2 text-neutral-300 truncate font-medium">
-                    {b.user_name}
+                  <div className="flex items-center justify-between sm:justify-end space-x-2">
+                    <div className="flex items-center space-x-1">
+                      <Users className="w-3.5 h-3.5 text-neutral-500" />
+                      <span>{b.expected_attendees || b.attendee_count} Seats</span>
+                    </div>
+                    <div className="text-right text-neutral-300 truncate font-medium max-w-[120px]">
+                      {b.user_name}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -404,27 +446,132 @@ export default function BookingsPage() {
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* Quick Date Presets */}
+            <div className="space-y-1.5 pt-1">
+              <label className="block text-[11px] font-semibold text-neutral-400">Quick Date Presets</label>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setDatePreset(0)}
+                  className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-[#BFF549]/20 hover:text-[#BFF549] text-neutral-300 text-[11px] font-medium border border-white/[0.08] transition-colors cursor-pointer"
+                >
+                  📅 Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDatePreset(1)}
+                  className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-[#BFF549]/20 hover:text-[#BFF549] text-neutral-300 text-[11px] font-medium border border-white/[0.08] transition-colors cursor-pointer"
+                >
+                  Tomorrow
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDatePreset(2)}
+                  className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-[#BFF549]/20 hover:text-[#BFF549] text-neutral-300 text-[11px] font-medium border border-white/[0.08] transition-colors cursor-pointer"
+                >
+                  In 2 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDatePreset(7)}
+                  className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-[#BFF549]/20 hover:text-[#BFF549] text-neutral-300 text-[11px] font-medium border border-white/[0.08] transition-colors cursor-pointer"
+                >
+                  Next Week
+                </button>
+              </div>
+            </div>
+
+            {/* Start Date & Start Time */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1.5">Start Time</label>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5 flex items-center space-x-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-[#BFF549]" />
+                  <span>Start Date</span>
+                </label>
                 <input
-                  type="datetime-local"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
                   required
-                  className="w-full bg-[#0D0D0D] border border-white/[0.10] rounded-xl px-2.5 py-1.5 text-xs text-white focus-ring"
+                  style={{ colorScheme: 'dark' }}
+                  className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white focus-ring cursor-pointer"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1.5">End Time</label>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5 flex items-center space-x-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#BFF549]" />
+                  <span>Start Time</span>
+                </label>
                 <input
-                  type="datetime-local"
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  required
+                  style={{ colorScheme: 'dark' }}
+                  className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white focus-ring cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* End Date & End Time */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5 flex items-center space-x-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-[#FF8A1F]" />
+                  <span>End Date</span>
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  required
+                  style={{ colorScheme: 'dark' }}
+                  className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white focus-ring cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5 flex items-center space-x-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#FF8A1F]" />
+                  <span>End Time</span>
+                </label>
+                <input
+                  type="time"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
                   required
-                  className="w-full bg-[#0D0D0D] border border-white/[0.10] rounded-xl px-2.5 py-1.5 text-xs text-white focus-ring"
+                  style={{ colorScheme: 'dark' }}
+                  className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white focus-ring cursor-pointer"
                 />
+              </div>
+            </div>
+
+            {/* Quick Duration Helper */}
+            <div className="flex items-center justify-between p-2 rounded-xl bg-[#0D0D0D] border border-white/[0.06] text-[11px]">
+              <span className="text-neutral-400">Add Duration:</span>
+              <div className="flex items-center space-x-1.5">
+                <button
+                  type="button"
+                  onClick={() => setDurationPreset(1)}
+                  className="px-2.5 py-0.5 rounded-lg bg-white/[0.06] hover:bg-[#BFF549]/20 hover:text-[#BFF549] text-neutral-300 font-mono text-xs border border-white/[0.08] transition-colors cursor-pointer"
+                >
+                  +1h
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDurationPreset(2)}
+                  className="px-2.5 py-0.5 rounded-lg bg-white/[0.06] hover:bg-[#BFF549]/20 hover:text-[#BFF549] text-neutral-300 font-mono text-xs border border-white/[0.08] transition-colors cursor-pointer"
+                >
+                  +2h
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDurationPreset(3)}
+                  className="px-2.5 py-0.5 rounded-lg bg-white/[0.06] hover:bg-[#BFF549]/20 hover:text-[#BFF549] text-neutral-300 font-mono text-xs border border-white/[0.08] transition-colors cursor-pointer"
+                >
+                  +3h
+                </button>
               </div>
             </div>
 

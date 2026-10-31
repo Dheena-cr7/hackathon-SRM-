@@ -46,6 +46,19 @@ export default function InventoryPage() {
   const [prError, setPrError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Custom Product Registration State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductSku, setNewProductSku] = useState('');
+  const [newProductCategory, setNewProductCategory] = useState('electrical');
+  const [newProductQty, setNewProductQty] = useState(20);
+  const [newProductCost, setNewProductCost] = useState(65.0);
+  const [newProductThreshold, setNewProductThreshold] = useState(5);
+  const [newProductLocation, setNewProductLocation] = useState('Bay D-04 Warehouse Depot');
+  const [newProductSubmitting, setNewProductSubmitting] = useState(false);
+  const [newProductSuccess, setNewProductSuccess] = useState<string | null>(null);
+  const [newProductError, setNewProductError] = useState<string | null>(null);
+
   // Live stock update confirmation toast
   const [recentApproved, setRecentApproved] = useState<{
     itemName: string;
@@ -159,6 +172,60 @@ export default function InventoryPage() {
     }
   };
 
+  const handleCreateCustomProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProductName.trim()) {
+      setNewProductError('Product name is required.');
+      return;
+    }
+    setNewProductSubmitting(true);
+    setNewProductError(null);
+    setNewProductSuccess(null);
+
+    try {
+      const payload = {
+        name: newProductName.trim(),
+        sku: newProductSku.trim() || undefined,
+        category: newProductCategory,
+        quantity_on_hand: Number(newProductQty),
+        unit_cost: Number(newProductCost),
+        reorder_threshold: Number(newProductThreshold),
+        location: newProductLocation.trim() || 'Central Depot',
+      };
+
+      const created = await fetchWithAuth('/inventory/items', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      // Immediate UI update
+      setItems((prev) => [created, ...prev]);
+      setPrItemId(created.id);
+      setPrItemName(created.name);
+      setPrUnitCost(created.unit_cost);
+      setReserveItemId(created.id);
+
+      setNewProductSuccess(`Product "${created.name}" (SKU: ${created.sku}) successfully registered and saved to database!`);
+
+      // Reset form
+      setNewProductName('');
+      setNewProductSku('');
+      setNewProductQty(20);
+      setNewProductCost(65.0);
+      setNewProductThreshold(5);
+
+      await loadData();
+      setTimeout(() => {
+        setNewProductSuccess(null);
+        setShowAddModal(false);
+      }, 2000);
+    } catch (err) {
+      setNewProductError((err as Error).message);
+    } finally {
+      setNewProductSubmitting(false);
+    }
+  };
+
   const handleApprovePR = async (prId: string) => {
     setActionLoading(true);
     setAuthError(null);
@@ -234,15 +301,25 @@ export default function InventoryPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={loadData}
-            disabled={loading}
-            className="p-2 px-3 bg-[#1A1A1A] hover:bg-[#242424] border border-white/[0.08] text-neutral-300 hover:text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors self-start sm:self-auto focus-ring cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#BFF549]' : ''}`} />
-            <span>Sync Inventory</span>
-          </button>
+          <div className="flex items-center space-x-2.5 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="p-2 px-3.5 bg-[#BFF549] hover:bg-[#8CC21F] text-black font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-glaido-button transition-all active:scale-[0.98] focus-ring cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-black" />
+              <span>Register Custom Product</span>
+            </button>
+            <button
+              type="button"
+              onClick={loadData}
+              disabled={loading}
+              className="p-2 px-3 bg-[#1A1A1A] hover:bg-[#242424] border border-white/[0.08] text-neutral-300 hover:text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors focus-ring cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#BFF549]' : ''}`} />
+              <span>Sync Inventory</span>
+            </button>
+          </div>
         </div>
 
         {/* Live Stock Replenishment Banner */}
@@ -299,7 +376,17 @@ export default function InventoryPage() {
               </h2>
               <p className="text-[11px] text-neutral-400 mt-0.5">Live campus warehouse stocks, work order reservations, and net available counts</p>
             </div>
-            <span className="text-xs text-neutral-400 font-mono">{items.length} SKUs registered</span>
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="px-2.5 py-1 bg-white/[0.06] hover:bg-[#BFF549]/20 hover:text-[#BFF549] text-neutral-300 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer border border-white/[0.08]"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#BFF549]" />
+                <span>Add Custom SKU</span>
+              </button>
+              <span className="text-xs text-neutral-400 font-mono">{items.length} SKUs registered</span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -685,6 +772,172 @@ export default function InventoryPage() {
             </div>
           </div>
         </div>
+
+        {/* Register Custom Product Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-[#141414] border border-white/[0.12] rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl relative">
+              <div className="flex items-start justify-between pb-3 border-b border-white/[0.08]">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 rounded-xl bg-[#BFF549]/10 border border-[#BFF549]/30 text-[#BFF549]">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Register Custom Product</h3>
+                    <p className="text-xs text-neutral-400">Directly persists new SKU into SQLite database catalog</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              {newProductSuccess && (
+                <div className="p-3 bg-[#BFF549]/10 border border-[#BFF549]/30 text-[#BFF549] rounded-xl text-xs flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{newProductSuccess}</span>
+                </div>
+              )}
+
+              {newProductError && (
+                <div className="p-3 bg-[#FF2B3A]/10 border border-[#FF2B3A]/30 text-[#FF2B3A] rounded-xl text-xs flex items-center space-x-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{newProductError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateCustomProduct} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                    Component / Product Name <span className="text-[#FF2B3A]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Siemens 63A 3-Phase Industrial Breaker"
+                    value={newProductName}
+                    onChange={(e) => setNewProductName(e.target.value)}
+                    className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white focus-ring"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                      Custom SKU Code
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ELEC-BRK-63A (optional)"
+                      value={newProductSku}
+                      onChange={(e) => setNewProductSku(e.target.value.toUpperCase())}
+                      className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white font-mono uppercase focus-ring"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                      Trade Category <span className="text-[#FF2B3A]">*</span>
+                    </label>
+                    <select
+                      value={newProductCategory}
+                      onChange={(e) => setNewProductCategory(e.target.value)}
+                      className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white focus-ring cursor-pointer"
+                    >
+                      <option value="electrical">Electrical</option>
+                      <option value="hvac">HVAC & Climate</option>
+                      <option value="plumbing">Plumbing</option>
+                      <option value="audiovisual">Audiovisual & Lab</option>
+                      <option value="network">Network & Fiber</option>
+                      <option value="structural">Structural</option>
+                      <option value="general">General Operations</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                      Initial Stock <span className="text-[#FF2B3A]">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={newProductQty}
+                      onChange={(e) => setNewProductQty(Number(e.target.value))}
+                      className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white font-mono focus-ring"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                      Unit Cost ($) <span className="text-[#FF2B3A]">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      step="0.01"
+                      min={0.01}
+                      value={newProductCost}
+                      onChange={(e) => setNewProductCost(Number(e.target.value))}
+                      className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white font-mono focus-ring"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                      Reorder Alert <span className="text-[#FF2B3A]">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={newProductThreshold}
+                      onChange={(e) => setNewProductThreshold(Number(e.target.value))}
+                      className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white font-mono focus-ring"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                    Warehouse Bay / Facility Location
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Bay D-04 Warehouse Depot"
+                    value={newProductLocation}
+                    onChange={(e) => setNewProductLocation(e.target.value)}
+                    className="w-full bg-[#0D0D0D] border border-white/[0.12] rounded-xl px-3 py-2 text-xs text-white focus-ring"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-white/[0.08]">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.10] text-neutral-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={newProductSubmitting}
+                    className="px-4 py-2 bg-[#BFF549] hover:bg-[#8CC21F] disabled:opacity-40 text-black font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-glaido-button transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-black" />
+                    <span>{newProductSubmitting ? 'Saving to Database...' : 'Save Product & Update Catalog'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </RoleGuard>
   );

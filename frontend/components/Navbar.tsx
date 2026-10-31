@@ -21,7 +21,8 @@ import {
   Menu, 
   CheckCircle2, 
   User,
-  ShieldCheck
+  ShieldCheck,
+  Clock
 } from 'lucide-react';
 import { getActiveUser, logoutUser, UserPreset } from '@/lib/api';
 import { ROLE_HIERARCHY, isRouteAllowed } from '@/lib/rbac';
@@ -36,6 +37,29 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(3);
+  const [clockStr, setClockStr] = useState<string>('');
+
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      const dateFormatted = now.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+      const timeFormatted = now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+      setClockStr(`${dateFormatted} • ${timeFormatted}`);
+    };
+    updateClock();
+    const timer = setInterval(updateClock, 1000);
+    return () => clearInterval(timer);
+  }, []);
   const [activeToast, setActiveToast] = useState<{ id: string; title: string; message: string } | null>({
     id: 'n-1',
     title: '🚨 Targeted Disruption Relocation',
@@ -256,6 +280,17 @@ export default function Navbar() {
 
           {/* Right Section: Status Indicator, Notifications & User Profile */}
           <div className="flex items-center space-x-3">
+            {/* Live Campus Operations Clock */}
+            {mounted && clockStr && (
+              <div 
+                className="hidden sm:flex items-center space-x-2 px-3 py-1 rounded-full bg-[#1A1A1A] border border-white/[0.08] text-[11px] text-neutral-300 font-mono"
+                title="Synchronized Institutional Operational Clock"
+              >
+                <Clock className="w-3.5 h-3.5 text-[#BFF549]" />
+                <span>{clockStr}</span>
+              </div>
+            )}
+
             {/* Real-time Status Badge */}
             <div 
               className="hidden md:flex items-center space-x-2 px-3 py-1 rounded-full bg-[#1A1A1A] border border-white/[0.08] text-[11px]"

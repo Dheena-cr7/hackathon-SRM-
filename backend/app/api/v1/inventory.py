@@ -9,7 +9,7 @@ from sqlalchemy import select
 from backend.app.core.database import get_db
 from backend.app.models.inventory import InventoryItem, PurchaseRequest
 from backend.app.schemas.inventory import (
-    InventoryItemResponse, PartsReservationRequest, PurchaseRequestCreate,
+    InventoryItemResponse, InventoryItemCreate, PartsReservationRequest, PurchaseRequestCreate,
     PurchaseRequestResponse, ApprovalDecisionRequest
 )
 from backend.app.domain.inventory.service import InventoryService, InsufficientStockError
@@ -29,6 +29,17 @@ async def list_items(
 ):
     """Retrieve catalog of spare parts with live quantities on hand and work-order reservations."""
     return await InventoryService.list_items(db)
+
+@router.post("", response_model=InventoryItemResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/items", response_model=InventoryItemResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/parts", response_model=InventoryItemResponse, status_code=status.HTTP_201_CREATED)
+async def create_inventory_item(
+    data: InventoryItemCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Register a new custom component SKU in campus warehouse database."""
+    return await InventoryService.create_item(db, data, current_user.id)
 
 @router.get("/purchases")
 @router.get("/purchase-requests")
