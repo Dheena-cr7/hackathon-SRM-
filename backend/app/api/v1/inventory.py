@@ -97,11 +97,13 @@ async def create_purchase_request(
         requester_id = data.requester_id or current_user.id
         request = await ApprovalService.create_purchase_request(db, requester_id, data)
         item = await db.get(InventoryItem, request.item_id)
+        requester = await db.get(User, request.requested_by_id)
         unit_cost = data.estimated_unit_cost or (item.unit_cost if item else 45.0)
-        user_name = getattr(current_user, "full_name", None) or getattr(current_user, "email", "Operations Staff")
+        req_name = getattr(requester, "full_name", None) or getattr(requester, "email", getattr(current_user, "full_name", "Operations Staff"))
         return {
             "id": request.id,
             "pr_number": f"PR-{request.id[:6].upper()}",
+            "item_id": request.item_id,
             "item_name": item.name if item else (data.item_name or "General Component"),
             "quantity": request.quantity,
             "estimated_unit_cost": unit_cost,
@@ -109,7 +111,7 @@ async def create_purchase_request(
             "justification": request.justification,
             "status": request.status,
             "requester_id": request.requested_by_id,
-            "requester_name": user_name
+            "requester_name": req_name
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -125,15 +127,26 @@ async def decide_purchase_approval(
     """
     Decide approval on a purchase request.
     Strictly prohibits self-approval: requester cannot approve their own requisition.
+    System Administrator can execute executive overrides with comprehensive audit trail.
     """
     try:
         approver_id = data.approver_id or current_user.id
         approval = await ApprovalService.decide_approval(db, approver_id, request_id, data)
+        
+        request = await db.get(PurchaseRequest, request_id)
+        item = await db.get(InventoryItem, request.item_id) if (request and request.item_id) else None
+        new_avail = (item.quantity_on_hand - item.quantity_reserved) if item else 0
+
         return {
             "success": True,
             "approval_id": approval.id,
             "decision": approval.decision,
-            "comments": approval.comments
+            "comments": approval.comments,
+            "item_id": request.item_id if request else None,
+            "item_name": item.name if item else "Catalog Item",
+            "quantity_added": request.quantity if (request and approval.decision == "approved") else 0,
+            "new_quantity_on_hand": item.quantity_on_hand if item else 0,
+            "new_available_stock": new_avail
         }
     except SelfApprovalProhibitedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.models.inventory import PurchaseRequest, Approval, InventoryItem
 from backend.app.models.audit import AuditLog
+from backend.app.models.user import User
 from backend.app.schemas.inventory import PurchaseRequestCreate, ApprovalDecisionRequest
 from backend.app.core.events import event_bus
 
@@ -18,11 +19,27 @@ class SelfApprovalProhibitedError(Exception):
 class ApprovalService:
     @staticmethod
     async def create_purchase_request(db: AsyncSession, requester_id: str, data: PurchaseRequestCreate) -> PurchaseRequest:
+        # Resolve effective requester ID
+        effective_requester = data.requester_id or requester_id
+        if effective_requester:
+            user = await db.get(User, effective_requester)
+            if not user:
+                res = await db.execute(select(User).where((User.id == effective_requester) | (User.email == effective_requester)))
+                matched = res.scalars().first()
+                if matched:
+                    effective_requester = matched.id
+
+        # Resolve inventory item
         item = None
         if data.item_id:
             item = await db.get(InventoryItem, data.item_id)
         if not item and data.item_name:
-            res = await db.execute(select(InventoryItem).where(InventoryItem.name.ilike(f"%{data.item_name}%")))
+            res = await db.execute(
+                select(InventoryItem).where(
+                    (InventoryItem.name.ilike(f"%{data.item_name.strip()}%")) |
+                    (InventoryItem.sku.ilike(f"%{data.item_name.strip()}%"))
+                )
+            )
             item = res.scalars().first()
         if not item:
             res = await db.execute(select(InventoryItem))
@@ -42,7 +59,6 @@ class ApprovalService:
 
         unit_cost = data.estimated_unit_cost or item.unit_cost
         total_cost = data.quantity * unit_cost
-        effective_requester = data.requester_id or requester_id
         
         request = PurchaseRequest(
             item_id=item.id,
@@ -79,13 +95,39 @@ class ApprovalService:
         if not request:
             raise ValueError(f"Purchase request '{request_id}' not found.")
 
-        # STRICT ANTI-SELF-APPROVAL RULE
+        # Resolve effective approver user
         effective_approver_id = data.approver_id or approver_id
+        approver_user = await db.get(User, effective_approver_id)
+        if not approver_user and effective_approver_id:
+            res = await db.execute(select(User).where((User.id == effective_approver_id) | (User.email == effective_approver_id)))
+            approver_user = res.scalars().first()
+            if approver_user:
+                effective_approver_id = approver_user.id
+
+        is_sysadmin = approver_user is not None and approver_user.role == "system_admin"
+
+        # STRICT ANTI-SELF-APPROVAL RULE (Separation of Duties)
+        # Prevents users from approving requisitions they personally authored.
+        # System Administrator holds executive emergency override privilege with full audit tracking.
         if request.requested_by_id == effective_approver_id:
-            raise SelfApprovalProhibitedError(
-                f"Separation of duties violation: Approver ({effective_approver_id}) cannot approve their own purchase request. "
-                f"Self-approval is strictly prohibited by institutional policy."
-            )
+            if not is_sysadmin:
+                raise SelfApprovalProhibitedError(
+                    f"Separation of duties violation: Approver ({effective_approver_id}) cannot approve their own purchase request. "
+                    f"Self-approval is strictly prohibited by institutional policy. Please have an authorized procurement approver (e.g. Sunita Mehra) or administrator review this requisition."
+                )
+            else:
+                override_audit = AuditLog(
+                    event_type="SYSTEM_ADMIN_OVERRIDE_SELF_APPROVAL",
+                    actor_id=effective_approver_id,
+                    entity_type="purchase_request",
+                    entity_id=request.id,
+                    details={
+                        "message": "System Administrator executive override exercised over separation of duties.",
+                        "approver_role": "system_admin",
+                        "request_id": request_id
+                    }
+                )
+                db.add(override_audit)
 
         if request.status != "pending":
             raise ValueError(f"Purchase request is already finalized with status: '{request.status}'.")
@@ -102,18 +144,25 @@ class ApprovalService:
         # Update purchase request status
         request.status = data.decision
 
-        # If approved, replenish inventory quantities
+        # If approved, replenish inventory quantities directly on hand
         if data.decision == "approved":
             item = await db.get(InventoryItem, request.item_id)
             if item:
                 item.quantity_on_hand += request.quantity
+                db.add(item)
+                await db.flush()
 
         audit = AuditLog(
             event_type="PURCHASE_REQUEST_DECIDED",
-            actor_id=approver_id,
+            actor_id=effective_approver_id,
             entity_type="approval",
             entity_id=approval.id,
-            details={"decision": data.decision, "request_id": request_id, "comments": data.comments}
+            details={
+                "decision": data.decision,
+                "request_id": request_id,
+                "comments": data.comments,
+                "system_admin_override": is_sysadmin and (request.requested_by_id == effective_approver_id)
+            }
         )
         db.add(audit)
         await db.commit()
@@ -121,7 +170,7 @@ class ApprovalService:
 
         await event_bus.publish("PurchaseRequestApproved" if data.decision == "approved" else "PurchaseRequestRejected", {
             "request_id": request.id,
-            "approver_id": approver_id,
+            "approver_id": effective_approver_id,
             "decision": data.decision
         })
         return approval
