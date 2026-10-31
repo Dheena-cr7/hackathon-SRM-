@@ -7,15 +7,60 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.core.database import get_db
 from backend.app.schemas.work_order import (
-    WorkOrderCreate, WorkOrderResponse, WorkOrderTransitionRequest, WorkOrderNoteRequest, TechnicianCandidate
+    WorkOrderCreate, WorkOrderResponse, WorkOrderTransitionRequest, WorkOrderNoteRequest, TechnicianCandidate, AssignedTechnicianInfo
 )
 from backend.app.domain.work_orders.service import WorkOrderService
 from backend.app.domain.work_orders.state_machine import InvalidStateTransitionError
 from backend.app.domain.staff.allocator import StaffAllocator
 from backend.app.api.deps import get_current_user, require_roles
-from backend.app.models.user import User
+from backend.app.models.user import User, StaffProfile
+from backend.app.models.work_order import WorkOrder
+from backend.app.models.incident import Incident
+from backend.app.models.campus import Building, Room
+from backend.app.models.audit import AuditLog
 
 router = APIRouter(prefix="/work-orders", tags=["Work Orders"])
+
+async def serialize_work_order(db: AsyncSession, wo: WorkOrder) -> WorkOrderResponse:
+    """Enriches work order with linked incident details, location, and technician info."""
+    incident = await db.get(Incident, wo.incident_id) if wo.incident_id else None
+    building = await db.get(Building, incident.building_id) if (incident and incident.building_id) else None
+    room = await db.get(Room, incident.room_id) if (incident and incident.room_id) else None
+
+    tech_user = None
+    tech_profile = None
+    if wo.assigned_technician_id:
+        tech_user = await db.get(User, wo.assigned_technician_id)
+        tech_profile = await db.get(StaffProfile, wo.assigned_technician_id)
+
+    return WorkOrderResponse(
+        id=wo.id,
+        order_number=wo.order_number,
+        work_order_number=wo.order_number,
+        incident_id=wo.incident_id,
+        incident_number=incident.incident_number if incident else "INC-UNKNOWN",
+        title=incident.title if incident else f"Maintenance Ticket {wo.order_number}",
+        description=incident.description if incident else "Facility maintenance inspection and resolution.",
+        category=incident.category if incident else "electrical",
+        priority=wo.priority or (incident.priority if incident else "medium"),
+        status=wo.status,
+        building_id=incident.building_id if incident else None,
+        building_name=building.name if building else "Campus Facilities",
+        room_id=incident.room_id if incident else None,
+        room_name=room.name if room else (incident.room_id if incident else "General Zone"),
+        estimated_duration_hours=wo.estimated_duration_hours or 1.0,
+        assigned_technician_id=wo.assigned_technician_id,
+        assigned_technician_name=tech_user.full_name if tech_user else "Unassigned",
+        assigned_technician=AssignedTechnicianInfo(
+            id=tech_user.id,
+            full_name=tech_user.full_name,
+            email=tech_user.email,
+            title=tech_profile.title if tech_profile else "Maintenance Technician"
+        ) if tech_user else None,
+        resolution_notes=wo.resolution_notes,
+        created_at=wo.created_at,
+        updated_at=wo.updated_at,
+    )
 
 @router.get("", response_model=List[WorkOrderResponse])
 async def list_work_orders(
@@ -23,12 +68,10 @@ async def list_work_orders(
     db: AsyncSession = Depends(get_db)
 ):
     from sqlalchemy import select
-    from backend.app.models.work_order import WorkOrder
     query = select(WorkOrder).order_by(WorkOrder.created_at.desc())
-    if current_user.role == "technician":
-        query = query.where(WorkOrder.assigned_technician_id == current_user.id)
     res = await db.execute(query)
-    return [WorkOrderResponse.model_validate(wo) for wo in res.scalars().all()]
+    wos = res.scalars().all()
+    return [await serialize_work_order(db, wo) for wo in wos]
 
 @router.post("", response_model=WorkOrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_work_order(
@@ -37,7 +80,7 @@ async def create_work_order(
     db: AsyncSession = Depends(get_db)
 ):
     wo = await WorkOrderService.create_work_order(db, data, current_user.id)
-    return WorkOrderResponse.model_validate(wo)
+    return await serialize_work_order(db, wo)
 
 @router.get("/technician-recommendations/{category}", response_model=List[TechnicianCandidate])
 async def recommend_technicians(
@@ -62,7 +105,7 @@ async def assign_technician(
     wo = await WorkOrderService.assign_technician(db, work_order_id, tech_id, current_user.id, reason)
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
-    return WorkOrderResponse.model_validate(wo)
+    return await serialize_work_order(db, wo)
 
 @router.patch("/{work_order_id}/transition", response_model=WorkOrderResponse)
 @router.post("/{work_order_id}/transition", response_model=WorkOrderResponse)
@@ -82,7 +125,7 @@ async def transition_work_order(
         )
         if not wo:
             raise HTTPException(status_code=404, detail="Work order not found")
-        return WorkOrderResponse.model_validate(wo)
+        return await serialize_work_order(db, wo)
     except InvalidStateTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -94,8 +137,6 @@ async def add_work_order_note(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    from backend.app.models.work_order import WorkOrder
-    from backend.app.models.audit import AuditLog
     wo = await db.get(WorkOrder, work_order_id)
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
@@ -116,7 +157,7 @@ async def add_work_order_note(
     db.add(audit)
     await db.commit()
     await db.refresh(wo)
-    return WorkOrderResponse.model_validate(wo)
+    return await serialize_work_order(db, wo)
 
 @router.get("/staff-roster")
 async def get_staff_roster(

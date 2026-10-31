@@ -42,17 +42,34 @@ class TechnicianCandidate(BaseModel):
     score: float
     recommendation_reason: str
 
+class AssignedTechnicianInfo(BaseModel):
+    id: str
+    full_name: str
+    email: Optional[str] = None
+    title: Optional[str] = "Maintenance Technician"
+
 class WorkOrderResponse(BaseModel):
     id: str
     order_number: str
+    work_order_number: Optional[str] = None
     incident_id: str
-    assigned_technician_id: Optional[str] = None
+    incident_number: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = "electrical"
+    priority: str = "medium"
     status: str
-    priority: str
-    estimated_duration_hours: float
+    building_id: Optional[str] = None
+    building_name: Optional[str] = None
+    room_id: Optional[str] = None
+    room_name: Optional[str] = None
+    estimated_duration_hours: float = 1.0
+    assigned_technician_id: Optional[str] = None
+    assigned_technician_name: Optional[str] = None
+    assigned_technician: Optional[AssignedTechnicianInfo] = None
     resolution_notes: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
